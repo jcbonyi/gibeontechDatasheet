@@ -1,0 +1,227 @@
+import type { ConditionItemKey } from '@/types/datasheet';
+
+/** Body types used across ADT motor quoting (SendQuoteScreen). */
+export const BODY_TYPES = [
+  'Saloon',
+  'Sedan',
+  'Station Wagon',
+  'Hatchback',
+  'SUV',
+  'Pickup',
+  'Van',
+  'Minibus',
+  'Bus',
+  'Coupe',
+  'Convertible',
+  'Truck',
+  'Prime Mover',
+  'Trailer',
+  'Other',
+] as const;
+
+export type BodyType = (typeof BODY_TYPES)[number];
+
+/** Common passenger, SUV, pickup, and commercial tyre sizes (Kenya / East Africa market). */
+export const TYRE_SIZES = [
+  '155/80R13',
+  '165/70R13',
+  '165/80R13',
+  '175/65R14',
+  '175/70R13',
+  '175/70R14',
+  '185/60R14',
+  '185/60R15',
+  '185/65R14',
+  '185/65R15',
+  '185/70R14',
+  '195/50R15',
+  '195/55R15',
+  '195/60R15',
+  '195/65R15',
+  '195/70R14',
+  '195/70R15',
+  '205/50R16',
+  '205/50R17',
+  '205/55R16',
+  '205/55R17',
+  '205/60R16',
+  '205/65R15',
+  '205/65R16',
+  '205/70R15',
+  '205/75R16',
+  '215/45R17',
+  '215/50R17',
+  '215/55R16',
+  '215/55R17',
+  '215/60R16',
+  '215/60R17',
+  '215/65R16',
+  '215/65R17',
+  '215/70R15',
+  '215/70R16',
+  '215/75R15',
+  '225/45R17',
+  '225/50R17',
+  '225/55R17',
+  '225/55R18',
+  '225/60R16',
+  '225/60R17',
+  '225/60R18',
+  '225/65R17',
+  '225/70R16',
+  '235/45R18',
+  '235/50R18',
+  '235/55R17',
+  '235/55R18',
+  '235/60R16',
+  '235/60R17',
+  '235/60R18',
+  '235/65R17',
+  '235/70R16',
+  '235/75R15',
+  '245/40R18',
+  '245/45R17',
+  '245/45R18',
+  '245/50R18',
+  '245/55R19',
+  '245/60R18',
+  '245/65R17',
+  '245/70R16',
+  '255/55R18',
+  '255/60R18',
+  '255/65R17',
+  '255/70R16',
+  '265/60R18',
+  '265/65R17',
+  '265/70R16',
+  '265/70R17',
+  '265/75R16',
+  '275/55R20',
+  '275/60R20',
+  '275/65R17',
+  '275/70R16',
+  '285/60R20',
+  '285/65R17',
+  '295/35R21',
+  '295/40R20',
+  '31x10.50R15',
+  '31x11.50R15',
+  '33x12.50R15',
+  '7.50R16',
+  '8.25R20',
+  '9.00R20',
+  '10.00R20',
+  '11R22.5',
+  '12R22.5',
+  'LT215/85R16',
+  'LT225/75R16',
+  'LT235/85R16',
+  'LT245/75R16',
+  'LT265/75R16',
+  'LT285/75R16',
+  'LT315/70R17',
+  '295/80R22.5',
+  '315/80R22.5',
+  'Other',
+] as const;
+
+export type TyreSize = (typeof TYRE_SIZES)[number];
+
+const MECHANICAL_CONDITION_OPTIONS = [
+  'Excellent',
+  'Good',
+  'Fair',
+  'Poor',
+  'Damaged',
+  'Defective',
+  'Worn',
+  'Not Tested',
+] as const;
+
+const BODY_CONDITION_OPTIONS = [
+  'Excellent',
+  'Good',
+  'Fair',
+  'Poor',
+  'Scratched',
+  'Dented',
+  'Damaged',
+  'Rusted',
+  'Not Applicable',
+  'Not Tested',
+] as const;
+
+const GLASS_LIGHT_CONDITION_OPTIONS = [
+  'Excellent',
+  'Good',
+  'Fair',
+  'Poor',
+  'Cracked',
+  'Chipped',
+  'Broken',
+  'Damaged',
+  'Not Tested',
+] as const;
+
+const OPTIONAL_EQUIPMENT_CONDITION_OPTIONS = [
+  'Working',
+  'Good',
+  'Fair',
+  'Poor',
+  'Not Working',
+  'Not Fitted',
+  'Not Applicable',
+  'Not Tested',
+] as const;
+
+const AIRBAG_CONDITION_OPTIONS = [
+  'Intact',
+  'Deployed',
+  'Not Fitted',
+  'Not Applicable',
+  'Not Tested',
+] as const;
+
+const MECHANICAL_ITEMS: ConditionItemKey[] = [
+  'Ignition',
+  'Transmission',
+  'Handling',
+  'Suspension',
+  'Chassis',
+  'Engine',
+  'Handbrake',
+  'Footbrake',
+  'Tyres',
+];
+
+const BODY_ITEMS: ConditionItemKey[] = [
+  'Bumpers',
+  'Boot Lid/Tailgate',
+  'Doors/Locks',
+  'Body Panels/Paintwork',
+  'Interior/Upholstery',
+];
+
+const GLASS_LIGHT_ITEMS: ConditionItemKey[] = [
+  'Headlights/Indicators/Hazard',
+  'Side Mirrors',
+  'Windscreens',
+];
+
+const OPTIONAL_ITEMS: ConditionItemKey[] = ['AC System', 'Alarm Device'];
+
+export function getConditionOptionsForItem(item: ConditionItemKey): readonly string[] {
+  if (item === 'Airbags') return AIRBAG_CONDITION_OPTIONS;
+  if (OPTIONAL_ITEMS.includes(item)) return OPTIONAL_EQUIPMENT_CONDITION_OPTIONS;
+  if (GLASS_LIGHT_ITEMS.includes(item)) return GLASS_LIGHT_CONDITION_OPTIONS;
+  if (BODY_ITEMS.includes(item)) return BODY_CONDITION_OPTIONS;
+  if (MECHANICAL_ITEMS.includes(item)) return MECHANICAL_CONDITION_OPTIONS;
+  return MECHANICAL_CONDITION_OPTIONS;
+}
+
+export function withSelectPlaceholder(
+  options: readonly string[],
+  placeholder = 'Select condition',
+): string[] {
+  return ['', ...options];
+}

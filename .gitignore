@@ -1,0 +1,8 @@
+node_modules
+.next
+.env.local
+.env
+uploads
+.persist
+*.log
+page_*.png
