@@ -167,10 +167,10 @@ export function DatasheetForm({
         description="Form type, date, and primary claim information"
       >
         <div className="mb-6 grid gap-4 sm:grid-cols-2">
-          <FormField label="Date" required error={errors.header?.date?.message}>
+          <FormField label="Date" error={errors.header?.date?.message}>
             <input type="date" {...register('header.date')} readOnly={readOnly} className="form-input" />
           </FormField>
-          <FormField label="Time" required error={errors.header?.time?.message}>
+          <FormField label="Time" error={errors.header?.time?.message}>
             <input type="time" {...register('header.time')} readOnly={readOnly} className="form-input" />
           </FormField>
         </div>
@@ -205,11 +205,11 @@ export function DatasheetForm({
           {(
             [
               ['clientInsurer', 'Client/Insurer', true],
-              ['ownerInsured', 'Owner/Insured', true],
+              ['ownerInsured', 'Owner/Insured', false],
               ['instructedBy', 'Instructed By', false],
               ['policyNo', 'Policy No.', false],
-              ['claimNo', 'Claim No.', true],
-              ['dateOfAccident', 'Date of Accident', true],
+              ['claimNo', 'Claim No.', false],
+              ['dateOfAccident', 'Date of Accident', false],
             ] as [keyof DatasheetFormData['basicInfo'], string, boolean][]
           ).map(([fieldKey, label, required]) => (
             <FormField
@@ -241,12 +241,12 @@ export function DatasheetForm({
           {(
             [
               ['regNo', 'Reg. No.', true],
-              ['make', 'Make', true],
-              ['modelNo', 'Model No.', true],
-              ['year', 'Year', true],
+              ['make', 'Make', false],
+              ['modelNo', 'Model No.', false],
+              ['year', 'Year', false],
               ['firstRegistered', "First Re'gd", false],
-              ['chassisNo', 'Chassis No.', true],
-              ['engineNo', 'Engine No.', true],
+              ['chassisNo', 'Chassis No.', false],
+              ['engineNo', 'Engine No.', false],
               ['sumInsured', 'Sum Insured', false],
               ['excess', 'Excess', false],
             ] as [keyof DatasheetFormData['basicInfo'], string, boolean][]

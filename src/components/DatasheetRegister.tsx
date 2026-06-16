@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { FileText, Plus, Search } from 'lucide-react';
 
@@ -14,31 +14,70 @@ interface DatasheetRow {
   updated_at: string;
 }
 
+type StatusFilter = '' | 'draft' | 'submitted';
+
 export function DatasheetRegister() {
   const [datasheets, setDatasheets] = useState<DatasheetRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [claimNo, setClaimNo] = useState('');
   const [regNo, setRegNo] = useState('');
-  const [status, setStatus] = useState('');
+  const [status, setStatus] = useState<StatusFilter>('');
 
-  const load = async () => {
+  const load = useCallback(async () => {
     setLoading(true);
     const params = new URLSearchParams();
     if (claimNo) params.set('claimNo', claimNo);
     if (regNo) params.set('regNo', regNo);
-    if (status) params.set('status', status);
     const res = await fetch(`/api/datasheets?${params}`);
     const data = await res.json();
     setDatasheets(data.datasheets || []);
     setLoading(false);
-  };
+  }, [claimNo, regNo]);
 
   useEffect(() => {
     load();
-  }, []);
+  }, [load]);
 
-  const submitted = datasheets.filter((d) => d.status === 'submitted').length;
-  const drafts = datasheets.filter((d) => d.status === 'draft').length;
+  const stats = useMemo(() => {
+    const submitted = datasheets.filter((d) => d.status === 'submitted').length;
+    const drafts = datasheets.filter((d) => d.status === 'draft').length;
+    return { total: datasheets.length, submitted, drafts };
+  }, [datasheets]);
+
+  const visibleDatasheets = useMemo(() => {
+    if (!status) return datasheets;
+    return datasheets.filter((d) => d.status === status);
+  }, [datasheets, status]);
+
+  const statCards: {
+    key: StatusFilter;
+    label: string;
+    value: number;
+    valueClass: string;
+    activeClass: string;
+  }[] = [
+    {
+      key: '',
+      label: 'Total',
+      value: stats.total,
+      valueClass: 'text-brand-700',
+      activeClass: 'ring-2 ring-brand-500 border-brand-200 bg-brand-50/60',
+    },
+    {
+      key: 'submitted',
+      label: 'Submitted',
+      value: stats.submitted,
+      valueClass: 'text-emerald-700',
+      activeClass: 'ring-2 ring-emerald-500 border-emerald-200 bg-emerald-50/60',
+    },
+    {
+      key: 'draft',
+      label: 'Drafts',
+      value: stats.drafts,
+      valueClass: 'text-amber-700',
+      activeClass: 'ring-2 ring-amber-500 border-amber-200 bg-amber-50/60',
+    },
+  ];
 
   return (
     <div>
@@ -54,18 +93,28 @@ export function DatasheetRegister() {
       </div>
 
       <div className="mb-6 grid gap-4 sm:grid-cols-3">
-        <div className="section-card py-4">
-          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Total</p>
-          <p className="mt-1 text-2xl font-bold text-brand-700">{datasheets.length}</p>
-        </div>
-        <div className="section-card py-4">
-          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Submitted</p>
-          <p className="mt-1 text-2xl font-bold text-emerald-700">{submitted}</p>
-        </div>
-        <div className="section-card py-4">
-          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Drafts</p>
-          <p className="mt-1 text-2xl font-bold text-amber-700">{drafts}</p>
-        </div>
+        {statCards.map((card) => {
+          const isActive = status === card.key;
+          return (
+            <button
+              key={card.label}
+              type="button"
+              onClick={() => setStatus(card.key)}
+              className={`section-card w-full py-4 text-left transition hover:shadow-md ${
+                isActive ? card.activeClass : 'hover:border-slate-300'
+              }`}
+              aria-pressed={isActive}
+            >
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                {card.label}
+              </p>
+              <p className={`mt-1 text-2xl font-bold ${card.valueClass}`}>{card.value}</p>
+              {isActive && card.key !== '' && (
+                <p className="mt-1 text-xs font-medium text-slate-500">Filtered view</p>
+              )}
+            </button>
+          );
+        })}
       </div>
 
       <div className="section-card mb-6">
@@ -82,7 +131,11 @@ export function DatasheetRegister() {
             placeholder="Reg. No."
             className="form-input"
           />
-          <select value={status} onChange={(e) => setStatus(e.target.value)} className="form-input">
+          <select
+            value={status}
+            onChange={(e) => setStatus(e.target.value as StatusFilter)}
+            className="form-input"
+          >
             <option value="">All statuses</option>
             <option value="draft">Draft</option>
             <option value="submitted">Submitted</option>
@@ -97,12 +150,26 @@ export function DatasheetRegister() {
       <div className="section-card overflow-x-auto">
         {loading ? (
           <p className="text-sm text-slate-500">Loading datasheets…</p>
-        ) : datasheets.length === 0 ? (
+        ) : visibleDatasheets.length === 0 ? (
           <div className="py-8 text-center">
-            <p className="text-sm text-slate-500">No datasheets found.</p>
-            <Link href="/datasheets/new" className="btn-primary mt-4 inline-flex">
-              Create your first datasheet
-            </Link>
+            <p className="text-sm text-slate-500">
+              {datasheets.length === 0
+                ? 'No datasheets found.'
+                : 'No datasheets match the selected filter.'}
+            </p>
+            {datasheets.length === 0 ? (
+              <Link href="/datasheets/new" className="btn-primary mt-4 inline-flex">
+                Create your first datasheet
+              </Link>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setStatus('')}
+                className="btn-secondary mt-4 inline-flex"
+              >
+                Show all
+              </button>
+            )}
           </div>
         ) : (
           <table className="data-table">
@@ -117,7 +184,7 @@ export function DatasheetRegister() {
               </tr>
             </thead>
             <tbody>
-              {datasheets.map((row) => (
+              {visibleDatasheets.map((row) => (
                 <tr key={row.id}>
                   <td className="font-semibold text-brand-800">{row.serial_no}</td>
                   <td>{row.claim_no || '—'}</td>
