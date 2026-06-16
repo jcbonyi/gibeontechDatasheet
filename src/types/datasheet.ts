@@ -1,7 +1,3 @@
-export type UserRole = 'Admin' | 'Assessor' | 'ReadOnly';
-
-export const USER_ROLES: UserRole[] = ['Admin', 'Assessor', 'ReadOnly'];
-
 export type DatasheetStatus = 'draft' | 'submitted';
 
 export type FormType = 'Assessment' | 'Re-inspection' | 'Supplementary' | 'Technical';

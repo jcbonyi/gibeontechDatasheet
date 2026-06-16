@@ -11,8 +11,6 @@
   },
   "dependencies": {
     "@hookform/resolvers": "^3.9.1",
-    "bcryptjs": "^3.0.3",
-    "jsonwebtoken": "^9.0.3",
     "jspdf": "^2.5.2",
     "jspdf-autotable": "^5.0.8",
     "lucide-react": "^0.468.0",
@@ -24,8 +22,6 @@
     "zod": "^3.24.1"
   },
   "devDependencies": {
-    "@types/bcryptjs": "^2.4.6",
-    "@types/jsonwebtoken": "^9.0.9",
     "@types/node": "^22.10.2",
     "@types/pg": "^8.11.11",
     "@types/react": "^19.0.2",

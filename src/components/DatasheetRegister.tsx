@@ -3,7 +3,6 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { FileText, Plus, Search } from 'lucide-react';
-import { useAuth } from '@/context/AuthContext';
 
 interface DatasheetRow {
   id: number;
@@ -16,7 +15,6 @@ interface DatasheetRow {
 }
 
 export function DatasheetRegister() {
-  const { user } = useAuth();
   const [datasheets, setDatasheets] = useState<DatasheetRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [claimNo, setClaimNo] = useState('');
@@ -39,7 +37,6 @@ export function DatasheetRegister() {
     load();
   }, []);
 
-  const canCreate = user?.role === 'Admin' || user?.role === 'Assessor';
   const submitted = datasheets.filter((d) => d.status === 'submitted').length;
   const drafts = datasheets.filter((d) => d.status === 'draft').length;
 
@@ -50,12 +47,10 @@ export function DatasheetRegister() {
           <h1 className="page-title">Datasheet Register</h1>
           <p className="page-subtitle">Motor claim assessment datasheets</p>
         </div>
-        {canCreate && (
-          <Link href="/datasheets/new" className="btn-primary">
-            <Plus className="h-4 w-4" />
-            New Datasheet
-          </Link>
-        )}
+        <Link href="/datasheets/new" className="btn-primary">
+          <Plus className="h-4 w-4" />
+          New Datasheet
+        </Link>
       </div>
 
       <div className="mb-6 grid gap-4 sm:grid-cols-3">
@@ -105,11 +100,9 @@ export function DatasheetRegister() {
         ) : datasheets.length === 0 ? (
           <div className="py-8 text-center">
             <p className="text-sm text-slate-500">No datasheets found.</p>
-            {canCreate && (
-              <Link href="/datasheets/new" className="btn-primary mt-4 inline-flex">
-                Create your first datasheet
-              </Link>
-            )}
+            <Link href="/datasheets/new" className="btn-primary mt-4 inline-flex">
+              Create your first datasheet
+            </Link>
           </div>
         ) : (
           <table className="data-table">

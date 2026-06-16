@@ -1,24 +1,11 @@
 import fs from 'fs';
 import path from 'path';
 import { Pool, type QueryResult, type QueryResultRow } from 'pg';
-import type { UserRole } from '@/types/datasheet';
-
-export interface DbUser {
-  id: number;
-  name: string;
-  email: string;
-  password_hash: string;
-  role: UserRole;
-  is_active: boolean;
-  created_at: string;
-}
 
 export interface DbDatasheet {
   id: number;
   serial_no: string;
   status: 'draft' | 'submitted';
-  created_by: number | null;
-  updated_by: number | null;
   form_data: Record<string, unknown>;
   claim_no: string | null;
   reg_no: string | null;
@@ -26,20 +13,8 @@ export interface DbDatasheet {
   updated_at: string;
 }
 
-export interface DbAttachment {
-  id: number;
-  datasheet_id: number;
-  doc_type: string;
-  file_name: string;
-  file_path: string;
-  uploaded_by: number | null;
-  uploaded_at: string;
-}
-
 interface JsonStore {
-  users: DbUser[];
   datasheets: DbDatasheet[];
-  attachments: DbAttachment[];
   serialCounter: number;
 }
 
@@ -56,9 +31,13 @@ function loadJsonStore(): JsonStore {
     fs.mkdirSync(PERSIST_DIR, { recursive: true });
   }
   if (fs.existsSync(PERSIST_FILE)) {
-    return JSON.parse(fs.readFileSync(PERSIST_FILE, 'utf8')) as JsonStore;
+    const parsed = JSON.parse(fs.readFileSync(PERSIST_FILE, 'utf8')) as Partial<JsonStore>;
+    return {
+      datasheets: parsed.datasheets || [],
+      serialCounter: parsed.serialCounter || 0,
+    };
   }
-  return { users: [], datasheets: [], attachments: [], serialCounter: 0 };
+  return { datasheets: [], serialCounter: 0 };
 }
 
 function saveJsonStore() {
@@ -69,6 +48,12 @@ function saveJsonStore() {
   fs.writeFileSync(PERSIST_FILE, JSON.stringify(jsonStore, null, 2));
 }
 
+function requiresSsl(connectionString: string): boolean {
+  if (process.env.PGSSLMODE === 'require') return true;
+  if (/sslmode=require/i.test(connectionString)) return true;
+  return /neon\.tech|supabase\.co|render\.com|railway\.app/i.test(connectionString);
+}
+
 async function initPostgres(): Promise<void> {
   const url = process.env.DATABASE_URL?.trim();
   if (!url) {
@@ -77,43 +62,21 @@ async function initPostgres(): Promise<void> {
     return;
   }
 
-  pool = new Pool({ connectionString: url });
-  await pool.query(`
-    CREATE TABLE IF NOT EXISTS users (
-      id SERIAL PRIMARY KEY,
-      name TEXT NOT NULL,
-      email TEXT UNIQUE NOT NULL,
-      password_hash TEXT NOT NULL,
-      role TEXT NOT NULL CHECK (role IN ('Admin', 'Assessor', 'ReadOnly')),
-      is_active BOOLEAN NOT NULL DEFAULT TRUE,
-      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    );
-  `);
+  pool = new Pool({
+    connectionString: url,
+    ssl: requiresSsl(url) ? { rejectUnauthorized: false } : undefined,
+  });
 
   await pool.query(`
     CREATE TABLE IF NOT EXISTS datasheets (
       id SERIAL PRIMARY KEY,
       serial_no TEXT UNIQUE NOT NULL,
       status TEXT NOT NULL CHECK (status IN ('draft', 'submitted')),
-      created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
-      updated_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
       form_data JSONB NOT NULL DEFAULT '{}'::jsonb,
       claim_no TEXT,
       reg_no TEXT,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    );
-  `);
-
-  await pool.query(`
-    CREATE TABLE IF NOT EXISTS datasheet_attachments (
-      id SERIAL PRIMARY KEY,
-      datasheet_id INTEGER NOT NULL REFERENCES datasheets(id) ON DELETE CASCADE,
-      doc_type TEXT NOT NULL,
-      file_name TEXT NOT NULL,
-      file_path TEXT NOT NULL,
-      uploaded_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
-      uploaded_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
   `);
 
@@ -126,14 +89,14 @@ async function initPostgres(): Promise<void> {
   await pool.query(`
     CREATE INDEX IF NOT EXISTS idx_datasheets_status ON datasheets (status);
   `);
-  await pool.query(`
-    CREATE INDEX IF NOT EXISTS idx_datasheets_created_by ON datasheets (created_by);
-  `);
 }
 
 export async function ensureDb(): Promise<void> {
   if (!initPromise) {
-    initPromise = initPostgres();
+    initPromise = initPostgres().catch((err) => {
+      initPromise = null;
+      throw err;
+    });
   }
   await initPromise;
 }
@@ -162,55 +125,10 @@ function jsonQuery<T extends QueryResultRow>(text: string, params: unknown[]): Q
   const store = jsonStore!;
   const sql = text.trim().toLowerCase();
 
-  if (sql.startsWith('select count(*)')) {
-    if (sql.includes('from users')) {
-      return { rows: [{ count: String(store.users.length) }], rowCount: 1 } as unknown as QueryResult<T>;
-    }
-  }
-
-  if (sql.includes('select id, name, email, role, is_active') && sql.includes('from users where email')) {
-    const email = String(params[0]).toLowerCase();
-    const user = store.users.find((u) => u.email.toLowerCase() === email);
-    return { rows: user ? [user as unknown as T] : [], rowCount: user ? 1 : 0 } as unknown as QueryResult<T>;
-  }
-
-  if (sql.includes('from users where id')) {
-    const id = Number(params[0]);
-    const user = store.users.find((u) => u.id === id);
-    return { rows: user ? [user as unknown as T] : [], rowCount: user ? 1 : 0 } as unknown as QueryResult<T>;
-  }
-
-  if (sql.includes('insert into users')) {
-    const [name, email, password_hash, role] = params as [string, string, string, UserRole];
-    const existing = store.users.find((u) => u.email.toLowerCase() === email.toLowerCase());
-    if (existing) throw new Error('duplicate key value violates unique constraint');
-    const id = store.users.length ? Math.max(...store.users.map((u) => u.id)) + 1 : 1;
-    const user: DbUser = {
-      id,
-      name,
-      email,
-      password_hash,
-      role,
-      is_active: true,
-      created_at: new Date().toISOString(),
-    };
-    store.users.push(user);
-    saveJsonStore();
-    return { rows: [user as unknown as T], rowCount: 1 } as unknown as QueryResult<T>;
-  }
-
-  if (sql.includes('select') && sql.includes('from users') && sql.includes('order by')) {
-    const rows = [...store.users].sort((a, b) => a.name.localeCompare(b.name));
-    return { rows: rows as unknown as T[], rowCount: rows.length } as unknown as QueryResult<T>;
-  }
-
   if (sql.includes('insert into datasheets')) {
-    store.serialCounter += 1;
-    const serial = `DS-${new Date().getFullYear()}-${String(store.serialCounter).padStart(4, '0')}`;
-    const [status, created_by, updated_by, form_data, claim_no, reg_no] = params as [
+    const [serial_no, status, form_data, claim_no, reg_no] = params as [
       string,
-      number | null,
-      number | null,
+      string,
       Record<string, unknown>,
       string | null,
       string | null,
@@ -219,10 +137,8 @@ function jsonQuery<T extends QueryResultRow>(text: string, params: unknown[]): Q
     const now = new Date().toISOString();
     const row: DbDatasheet = {
       id,
-      serial_no: serial,
+      serial_no,
       status: status as 'draft' | 'submitted',
-      created_by,
-      updated_by,
       form_data,
       claim_no,
       reg_no,
@@ -230,6 +146,10 @@ function jsonQuery<T extends QueryResultRow>(text: string, params: unknown[]): Q
       updated_at: now,
     };
     store.datasheets.push(row);
+    const counter = Number(serial_no.split('-').pop());
+    if (!Number.isNaN(counter)) {
+      store.serialCounter = Math.max(store.serialCounter, counter);
+    }
     saveJsonStore();
     return { rows: [row as unknown as T], rowCount: 1 } as unknown as QueryResult<T>;
   }
@@ -245,14 +165,11 @@ function jsonQuery<T extends QueryResultRow>(text: string, params: unknown[]): Q
     const idx = store.datasheets.findIndex((d) => d.id === id);
     if (idx === -1) return { rows: [], rowCount: 0 } as unknown as QueryResult<T>;
     const row = store.datasheets[idx];
-    if (params.length >= 6) {
-      row.status = params[0] as 'draft' | 'submitted';
-      row.updated_by = params[1] as number | null;
-      row.form_data = params[2] as Record<string, unknown>;
-      row.claim_no = params[3] as string | null;
-      row.reg_no = params[4] as string | null;
-      row.updated_at = new Date().toISOString();
-    }
+    row.status = params[0] as 'draft' | 'submitted';
+    row.form_data = params[1] as Record<string, unknown>;
+    row.claim_no = params[2] as string | null;
+    row.reg_no = params[3] as string | null;
+    row.updated_at = new Date().toISOString();
     saveJsonStore();
     return { rows: [row as unknown as T], rowCount: 1 } as unknown as QueryResult<T>;
   }
@@ -261,7 +178,6 @@ function jsonQuery<T extends QueryResultRow>(text: string, params: unknown[]): Q
     const id = Number(params[0]);
     const before = store.datasheets.length;
     store.datasheets = store.datasheets.filter((d) => d.id !== id);
-    store.attachments = store.attachments.filter((a) => a.datasheet_id !== id);
     saveJsonStore();
     return { rows: [], rowCount: before - store.datasheets.length } as unknown as QueryResult<T>;
   }
@@ -271,9 +187,8 @@ function jsonQuery<T extends QueryResultRow>(text: string, params: unknown[]): Q
     const status = params.find((p) => p === 'draft' || p === 'submitted');
     const claimNo = params.find((p) => typeof p === 'string' && String(p).includes('%'));
     const regNo = params.find(
-      (p, i) => typeof p === 'string' && String(p).includes('%') && p !== claimNo,
+      (p) => typeof p === 'string' && String(p).includes('%') && p !== claimNo,
     );
-    const createdBy = params.find((p) => typeof p === 'number');
 
     if (status) rows = rows.filter((r) => r.status === status);
     if (typeof claimNo === 'string') {
@@ -284,42 +199,19 @@ function jsonQuery<T extends QueryResultRow>(text: string, params: unknown[]): Q
       const q = regNo.replace(/%/g, '').toLowerCase();
       rows = rows.filter((r) => (r.reg_no || '').toLowerCase().includes(q));
     }
-    if (typeof createdBy === 'number') {
-      rows = rows.filter((r) => r.created_by === createdBy);
-    }
     rows.sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime());
     return { rows: rows as unknown as T[], rowCount: rows.length } as unknown as QueryResult<T>;
   }
 
-  if (sql.includes('insert into datasheet_attachments')) {
-    const [datasheet_id, doc_type, file_name, file_path, uploaded_by] = params as [
-      number,
-      string,
-      string,
-      string,
-      number | null,
-    ];
-    const id = store.attachments.length
-      ? Math.max(...store.attachments.map((a) => a.id)) + 1
-      : 1;
-    const row: DbAttachment = {
-      id,
-      datasheet_id,
-      doc_type,
-      file_name,
-      file_path,
-      uploaded_by,
-      uploaded_at: new Date().toISOString(),
-    };
-    store.attachments.push(row);
-    saveJsonStore();
-    return { rows: [row as unknown as T], rowCount: 1 } as unknown as QueryResult<T>;
-  }
-
-  if (sql.includes('from datasheet_attachments where datasheet_id')) {
-    const datasheetId = Number(params[0]);
-    const rows = store.attachments.filter((a) => a.datasheet_id === datasheetId);
-    return { rows: rows as unknown as T[], rowCount: rows.length } as unknown as QueryResult<T>;
+  if (sql.includes('serial_no from datasheets where serial_no like')) {
+    const prefix = String(params[0]).replace(/%/g, '');
+    const rows = store.datasheets
+      .filter((d) => d.serial_no.startsWith(prefix))
+      .sort((a, b) => b.id - a.id);
+    return {
+      rows: rows.length ? [{ serial_no: rows[0].serial_no } as unknown as T] : [],
+      rowCount: rows.length ? 1 : 0,
+    } as unknown as QueryResult<T>;
   }
 
   return { rows: [], rowCount: 0 } as unknown as QueryResult<T>;

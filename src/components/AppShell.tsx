@@ -2,17 +2,13 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { ClipboardList, LogOut, Users } from 'lucide-react';
-import { useAuth } from '@/context/AuthContext';
+import { ClipboardList } from 'lucide-react';
 import { Letterhead } from '@/components/Letterhead';
 import { COMPANY } from '@/constants/brand';
 
 export function AppShell({ children }: { children: React.ReactNode }) {
-  const { user, logout } = useAuth();
   const pathname = usePathname();
-
   const isRegister = pathname.startsWith('/datasheets');
-  const isAdmin = pathname.startsWith('/admin');
 
   return (
     <div className="min-h-screen">
@@ -24,34 +20,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               Datasheet Capture
             </div>
 
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="hidden rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-600 sm:inline">
-                {user?.name} · {user?.role}
-              </span>
-              {user?.role === 'Admin' && (
-                <Link
-                  href="/admin/users"
-                  className={`nav-pill ${isAdmin ? 'nav-pill-active' : 'nav-pill-idle'}`}
-                >
-                  <Users className="h-4 w-4" />
-                  Users
-                </Link>
-              )}
-              <Link
-                href="/datasheets"
-                className={`nav-pill ${isRegister ? 'nav-pill-active' : 'nav-pill-idle'}`}
-              >
-                Register
-              </Link>
-              <button
-                type="button"
-                onClick={logout}
-                className="nav-pill nav-pill-idle text-red-600 hover:bg-red-50 hover:text-red-700"
-              >
-                <LogOut className="h-4 w-4" />
-                Logout
-              </button>
-            </div>
+            <Link
+              href="/datasheets"
+              className={`nav-pill ${isRegister ? 'nav-pill-active' : 'nav-pill-idle'}`}
+            >
+              Register
+            </Link>
           </div>
           <Letterhead variant="app" documentTitle={COMPANY.reportTitle} />
         </div>

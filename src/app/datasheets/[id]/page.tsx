@@ -2,20 +2,16 @@
 
 import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
-import { AuthGuard } from '@/components/AuthGuard';
 import { AppShell } from '@/components/AppShell';
 import { DatasheetForm } from '@/components/DatasheetForm';
 import { DatasheetFormData, createDefaultFormData } from '@/types/datasheet';
-import { useAuth } from '@/context/AuthContext';
 
 export default function EditDatasheetPage() {
   const params = useParams();
-  const { user } = useAuth();
   const id = Number(params.id);
   const [formData, setFormData] = useState<DatasheetFormData | null>(null);
   const [serialNo, setSerialNo] = useState('');
   const [status, setStatus] = useState<'draft' | 'submitted'>('draft');
-  const [createdBy, setCreatedBy] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -33,7 +29,6 @@ export default function EditDatasheetPage() {
         });
         setSerialNo(data.datasheet.serial_no);
         setStatus(data.datasheet.status);
-        setCreatedBy(data.datasheet.created_by);
       })
       .catch((err) => setError(err.message))
       .finally(() => setLoading(false));
@@ -50,55 +45,39 @@ export default function EditDatasheetPage() {
     setStatus(result.datasheet.status);
   };
 
-  const readOnly =
-    user?.role === 'ReadOnly' ||
-    (user?.role === 'Assessor' && createdBy !== user.id) ||
-    status === 'submitted';
-
   if (loading) {
     return (
-      <AuthGuard>
-        <AppShell>
-          <p className="text-sm text-slate-500">Loading datasheet...</p>
-        </AppShell>
-      </AuthGuard>
+      <AppShell>
+        <p className="text-sm text-slate-500">Loading datasheet...</p>
+      </AppShell>
     );
   }
 
   if (error || !formData) {
     return (
-      <AuthGuard>
-        <AppShell>
-          <p className="text-sm text-red-600">{error || 'Datasheet not found'}</p>
-        </AppShell>
-      </AuthGuard>
+      <AppShell>
+        <p className="text-sm text-red-600">{error || 'Datasheet not found'}</p>
+      </AppShell>
     );
   }
 
   return (
-    <AuthGuard>
-      <AppShell>
-        <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
-          <div>
-            <h1 className="page-title">{serialNo || 'New Datasheet'}</h1>
-            <p className="page-subtitle">
-              {serialNo ? (
-                <>Status: <span className="font-medium capitalize text-brand-700">{status}</span></>
-              ) : (
-                'Capture motor claim assessment data'
-              )}
-            </p>
-          </div>
+    <AppShell>
+      <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
+        <div>
+          <h1 className="page-title">{serialNo || 'Datasheet'}</h1>
+          <p className="page-subtitle">
+            Status: <span className="font-medium capitalize text-brand-700">{status}</span>
+          </p>
         </div>
-        <DatasheetForm
-          initialData={formData}
-          datasheetId={id}
-          serialNo={serialNo}
-          status={status}
-          readOnly={readOnly}
-          onSave={handleSave}
-        />
-      </AppShell>
-    </AuthGuard>
+      </div>
+      <DatasheetForm
+        initialData={formData}
+        datasheetId={id}
+        serialNo={serialNo}
+        status={status}
+        onSave={handleSave}
+      />
+    </AppShell>
   );
 }
