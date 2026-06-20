@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import {
+  allocateNextSerialNo,
   getDatasheetById,
   insertDatasheetRecord,
+  isDuplicateSerialError,
   listDatasheets,
   logDatasheetAudit,
-  query,
 } from '@/lib/db';
 import { applySeenBy } from '@/lib/auth';
 import { getAuthUser, unauthorized } from '@/lib/api';
@@ -21,18 +22,6 @@ function extractSearchFields(formData: Record<string, unknown>) {
     claimNo: basic.claimNo || null,
     regNo: basic.regNo || inspection?.vehicleDetails?.registrationNumber || null,
   };
-}
-
-async function nextSerialNo(): Promise<string> {
-  const year = new Date().getFullYear();
-  const prefix = `DS-${year}-`;
-  const result = await query<{ serial_no: string }>(
-    `SELECT serial_no FROM datasheets WHERE serial_no LIKE $1 ORDER BY id DESC LIMIT 1`,
-    [`${prefix}%`],
-  );
-  const last = result.rows[0]?.serial_no;
-  const next = last ? Number(last.slice(prefix.length)) + 1 : 1;
-  return `${prefix}${String(next).padStart(4, '0')}`;
 }
 
 export async function GET(req: NextRequest) {
@@ -71,21 +60,33 @@ export async function POST(req: NextRequest) {
     formData = applySeenBy(formData, user.name);
 
     const { claimNo, regNo } = extractSearchFields(formData);
-    const serialNo = await nextSerialNo();
 
-    const datasheet = await insertDatasheetRecord({
-      serial_no: serialNo,
-      status,
-      created_by: user.id,
-      updated_by: user.id,
-      form_data: formData,
-      claim_no: claimNo,
-      reg_no: regNo,
-      assigned_to: null,
-      assigned_by: null,
-      assigned_at: null,
-      reopen_reason: null,
-    });
+    let datasheet = null;
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const serialNo = await allocateNextSerialNo();
+      try {
+        datasheet = await insertDatasheetRecord({
+          serial_no: serialNo,
+          status,
+          created_by: user.id,
+          updated_by: user.id,
+          form_data: formData,
+          claim_no: claimNo,
+          reg_no: regNo,
+          assigned_to: null,
+          assigned_by: null,
+          assigned_at: null,
+          reopen_reason: null,
+        });
+        break;
+      } catch (err) {
+        if (!isDuplicateSerialError(err) || attempt === 4) throw err;
+      }
+    }
+
+    if (!datasheet) {
+      throw new Error('Failed to allocate a unique serial number');
+    }
 
     await logDatasheetAudit(datasheet.id, user.id, user.name, 'created', { status });
 

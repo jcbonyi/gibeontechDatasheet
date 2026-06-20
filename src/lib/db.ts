@@ -459,7 +459,20 @@ async function supabaseQuery<T extends QueryResultRow>(
     return { rows: [], rowCount: count || 0 } as unknown as QueryResult<T>;
   }
 
-  if (sql.includes('from datasheets') && sql.includes('order by')) {
+  if (sql.includes('serial_no from datasheets where serial_no like')) {
+    const prefix = String(params[0]).replace(/%/g, '');
+    const { data, error } = await client
+      .from('datasheets')
+      .select('serial_no')
+      .like('serial_no', `${prefix}%`);
+    if (error) throw new Error(error.message);
+    return {
+      rows: (data || []) as T[],
+      rowCount: data?.length || 0,
+    } as unknown as QueryResult<T>;
+  }
+
+  if (sql.includes('from datasheets') && sql.includes('order by') && !sql.includes('serial_no like')) {
     let q = client
       .from('datasheets')
       .select(
@@ -485,21 +498,6 @@ async function supabaseQuery<T extends QueryResultRow>(
     const { data, error } = await q.order('updated_at', { ascending: false });
     if (error) throw new Error(error.message);
     return { rows: (data || []) as T[], rowCount: data?.length || 0 } as unknown as QueryResult<T>;
-  }
-
-  if (sql.includes('serial_no from datasheets where serial_no like')) {
-    const prefix = String(params[0]);
-    const { data, error } = await client
-      .from('datasheets')
-      .select('serial_no')
-      .like('serial_no', prefix)
-      .order('id', { ascending: false })
-      .limit(1);
-    if (error) throw new Error(error.message);
-    return {
-      rows: data?.length ? [data[0] as T] : [],
-      rowCount: data?.length || 0,
-    } as unknown as QueryResult<T>;
   }
 
   return { rows: [], rowCount: 0 } as unknown as QueryResult<T>;
@@ -650,12 +648,10 @@ function jsonQuery<T extends QueryResultRow>(text: string, params: unknown[]): Q
 
   if (sql.includes('serial_no from datasheets where serial_no like')) {
     const prefix = String(params[0]).replace(/%/g, '');
-    const rows = store.datasheets
-      .filter((d) => d.serial_no.startsWith(prefix))
-      .sort((a, b) => b.id - a.id);
+    const rows = store.datasheets.filter((d) => d.serial_no.startsWith(prefix));
     return {
-      rows: rows.length ? [{ serial_no: rows[0].serial_no } as unknown as T] : [],
-      rowCount: rows.length ? 1 : 0,
+      rows: rows.map((d) => ({ serial_no: d.serial_no })) as unknown as T[],
+      rowCount: rows.length,
     } as unknown as QueryResult<T>;
   }
 
@@ -980,6 +976,58 @@ export async function updateUserRecord(
 export async function getDatasheetById(id: number): Promise<DbDatasheet | null> {
   const result = await query<DbDatasheet>('SELECT * FROM datasheets WHERE id = $1', [id]);
   return result.rows[0] || null;
+}
+
+function maxSerialSuffix(prefix: string, serials: string[]): number {
+  return serials.reduce((highest, serialNo) => {
+    if (!serialNo.startsWith(prefix)) return highest;
+    const num = Number(serialNo.slice(prefix.length));
+    return Number.isFinite(num) ? Math.max(highest, num) : highest;
+  }, 0);
+}
+
+export async function allocateNextSerialNo(): Promise<string> {
+  await ensureDb();
+  const year = new Date().getFullYear();
+  const prefix = `DS-${year}-`;
+
+  if (useSupabase) {
+    const client = getSupabaseAdmin();
+    if (!client) throw new Error('Supabase client not initialized');
+    const { data, error } = await client
+      .from('datasheets')
+      .select('serial_no')
+      .like('serial_no', `${prefix}%`);
+    if (error) throw new Error(error.message);
+    const next = maxSerialSuffix(prefix, (data || []).map((row) => row.serial_no)) + 1;
+    return `${prefix}${String(next).padStart(4, '0')}`;
+  }
+
+  if (useJson && jsonStore) {
+    const next =
+      maxSerialSuffix(
+        prefix,
+        jsonStore.datasheets.map((d) => d.serial_no),
+      ) + 1;
+    return `${prefix}${String(next).padStart(4, '0')}`;
+  }
+
+  if (!pool) throw new Error(dbConfigError());
+
+  const result = await pool.query<{ serial_no: string }>(
+    'SELECT serial_no FROM datasheets WHERE serial_no LIKE $1',
+    [`${prefix}%`],
+  );
+  const next = maxSerialSuffix(prefix, result.rows.map((row) => row.serial_no)) + 1;
+  return `${prefix}${String(next).padStart(4, '0')}`;
+}
+
+export function isDuplicateSerialError(err: unknown): boolean {
+  return (
+    err instanceof Error &&
+    (err.message.includes('datasheets_serial_no_key') ||
+      err.message.includes('duplicate key value violates unique constraint'))
+  );
 }
 
 export async function insertDatasheetRecord(
