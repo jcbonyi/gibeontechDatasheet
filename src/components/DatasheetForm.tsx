@@ -8,15 +8,22 @@ import { datasheetFormSchema } from '@/schemas/datasheetSchema';
 import {
   CONDITION_ITEMS,
   createDefaultFormData,
+  createDefaultInspectionFormData,
   DatasheetFormData,
   FORM_SECTIONS,
   FORM_TYPES,
   FUEL_TYPES,
   GARAGE_ARRIVAL_OPTIONS,
   TYRE_TYPE_OPTIONS,
+  DASHBOARD_WARNING_LIGHTS,
+  hasInspectionForm,
+  isInspectionOnlyForm,
+  type DatasheetStatus,
 } from '@/types/datasheet';
+import { EmbeddedInspectionForm } from '@/inspection/components/EmbeddedInspectionForm';
 import {
   BODY_TYPES,
+  ORIGIN_OPTIONS,
   TYRE_SIZES,
   getConditionOptionsForItem,
   withSelectPlaceholder,
@@ -24,19 +31,22 @@ import {
 import { FormSection } from './FormSection';
 import { FormField } from './FormField';
 import { FormProgress } from './FormProgress';
-import { AdviceSection } from './AdviceSection';
+import { RemarksSection } from './RemarksSection';
 import { DocumentChecklist } from './DocumentChecklist';
 import { VehicleDiagram } from './VehicleDiagram';
 import { SignaturePad } from './SignaturePad';
 import { exportDatasheetPdf } from '@/utils/pdfExport';
+import { useAuth } from '@/context/AuthContext';
+import Link from 'next/link';
+import { ArrowLeft } from 'lucide-react';
 
 interface DatasheetFormProps {
   initialData?: DatasheetFormData;
   datasheetId?: number;
   serialNo?: string;
-  status?: 'draft' | 'submitted';
+  status?: DatasheetStatus;
   readOnly?: boolean;
-  onSave: (data: DatasheetFormData, status: 'draft' | 'submitted') => Promise<void>;
+  onSave: (data: DatasheetFormData, status: DatasheetStatus) => Promise<void>;
 }
 
 export function DatasheetForm({
@@ -47,6 +57,7 @@ export function DatasheetForm({
   readOnly,
   onSave,
 }: DatasheetFormProps) {
+  const { user } = useAuth();
   const [activeSection, setActiveSection] = useState('header');
   const [submitError, setSubmitError] = useState('');
   const [saveMessage, setSaveMessage] = useState('');
@@ -69,10 +80,18 @@ export function DatasheetForm({
   const documents = watch('documents');
   const diagramMarks = watch('damage.vehicleDiagram');
   const formTypes = watch('header.formTypes');
+  const isInspectionMode = hasInspectionForm(formTypes);
+  const isInspectionOnly = isInspectionOnlyForm(formTypes);
 
   useEffect(() => {
     if (initialData) reset(initialData);
   }, [initialData, reset]);
+
+  useEffect(() => {
+    if (user?.name) {
+      setValue('signOff.seenBy', user.name);
+    }
+  }, [user?.name, setValue]);
 
   const trackActiveSection = useCallback(() => {
     const offsets = FORM_SECTIONS.map((s) => {
@@ -118,13 +137,14 @@ export function DatasheetForm({
   const toggleFormType = (type: (typeof FORM_TYPES)[number]) => {
     const current = getValues('header.formTypes');
     if (current.includes(type)) {
-      setValue(
-        'header.formTypes',
-        current.filter((t) => t !== type),
-        { shouldValidate: true },
-      );
+      const next = current.filter((t) => t !== type);
+      setValue('header.formTypes', next, { shouldValidate: true });
     } else {
-      setValue('header.formTypes', [...current, type], { shouldValidate: true });
+      const next = [...current, type];
+      setValue('header.formTypes', next, { shouldValidate: true });
+      if (type === 'Inspection' && !getValues('inspection')) {
+        setValue('inspection', createDefaultInspectionFormData(user?.name));
+      }
     }
   };
 
@@ -153,8 +173,16 @@ export function DatasheetForm({
 
   return (
     <form onSubmit={handleSubmit(onSubmit)}>
-      <div className="lg:grid lg:grid-cols-[240px_minmax(0,1fr)] lg:items-start lg:gap-8">
-        <FormProgress activeSection={activeSection} onNavigate={navigateToSection} />
+      <div
+        className={
+          isInspectionOnly
+            ? 'space-y-6'
+            : 'lg:grid lg:grid-cols-[240px_minmax(0,1fr)] lg:items-start lg:gap-8'
+        }
+      >
+        {!isInspectionOnly && (
+          <FormProgress activeSection={activeSection} onNavigate={navigateToSection} />
+        )}
 
         <div className="space-y-6">
       {saveMessage && <p className="alert-success">{saveMessage}</p>}
@@ -192,6 +220,8 @@ export function DatasheetForm({
           </div>
         </FormField>
 
+        {!isInspectionOnly && (
+          <>
         <FormField label="Documents Provided" className="mt-4">
           <textarea
             {...register('basicInfo.documentsProvided')}
@@ -229,8 +259,28 @@ export function DatasheetForm({
             </FormField>
           ))}
         </div>
+          </>
+        )}
       </FormSection>
 
+      {isInspectionMode && (
+        <Controller
+          key={datasheetId ?? 'new-inspection'}
+          name="inspection"
+          control={control}
+          render={({ field }) => (
+            <EmbeddedInspectionForm
+              value={field.value || createDefaultInspectionFormData(user?.name)}
+              onChange={field.onChange}
+              readOnly={readOnly}
+              defaultInspectorName={user?.name}
+            />
+          )}
+        />
+      )}
+
+      {!isInspectionOnly && (
+        <>
       <FormSection
         id="vehicle"
         number={2}
@@ -260,6 +310,7 @@ export function DatasheetForm({
               }
             >
               <input
+                type={fieldKey === 'firstRegistered' ? 'date' : 'text'}
                 {...register(`basicInfo.${fieldKey as keyof DatasheetFormData['basicInfo']}`)}
                 readOnly={readOnly}
                 className="form-input"
@@ -277,7 +328,14 @@ export function DatasheetForm({
       >
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           <FormField label="Origin">
-            <input {...register('assessment.origin')} readOnly={readOnly} className="form-input" />
+            <select {...register('assessment.origin')} disabled={readOnly} className="form-input">
+              <option value="">Select origin</option>
+              {ORIGIN_OPTIONS.map((origin) => (
+                <option key={origin} value={origin}>
+                  {origin}
+                </option>
+              ))}
+            </select>
           </FormField>
           <FormField label="Body Type">
             <select {...register('assessment.bodyType')} disabled={readOnly} className="form-input">
@@ -359,6 +417,37 @@ export function DatasheetForm({
             );
           })}
         </div>
+
+        <div className="mt-6">
+          <h3 className="mb-3 text-sm font-semibold text-slate-700">Dashboard Warning Lights Noted</h3>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {DASHBOARD_WARNING_LIGHTS.map((light) => (
+              <label
+                key={light.key}
+                className={`flex items-center gap-2 rounded-md border border-slate-200 px-3 py-2 text-sm text-slate-700 ${
+                  readOnly ? 'cursor-default bg-slate-50' : 'cursor-pointer hover:bg-slate-50'
+                }`}
+              >
+                <input
+                  type="checkbox"
+                  {...register(`assessment.dashboardWarningLights.${light.key}`)}
+                  disabled={readOnly}
+                  className="h-4 w-4 rounded border-slate-300 text-brand-700 focus:ring-brand-500"
+                />
+                <span>{light.label}</span>
+              </label>
+            ))}
+          </div>
+          <FormField label="Additional Notes" className="mt-4">
+            <textarea
+              {...register('assessment.dashboardWarningLightsNotes')}
+              readOnly={readOnly}
+              rows={2}
+              placeholder="Other warning lights or details..."
+              className="form-input resize-y"
+            />
+          </FormField>
+        </div>
       </FormSection>
 
       <FormSection
@@ -421,15 +510,45 @@ export function DatasheetForm({
             ))}
           </div>
         </FormField>
+
+        <div className="mt-6 grid gap-4 lg:grid-cols-3">
+          <FormField label="Parts to be Replaced">
+            <textarea
+              {...register('parts.toBeReplaced')}
+              readOnly={readOnly}
+              rows={4}
+              className="form-input resize-y"
+              placeholder="List parts to be replaced..."
+            />
+          </FormField>
+          <FormField label="Parts to be Painted">
+            <textarea
+              {...register('parts.toBePainted')}
+              readOnly={readOnly}
+              rows={4}
+              className="form-input resize-y"
+              placeholder="List parts to be painted..."
+            />
+          </FormField>
+          <FormField label="Parts to be Repaired">
+            <textarea
+              {...register('parts.toBeRepaired')}
+              readOnly={readOnly}
+              rows={4}
+              className="form-input resize-y"
+              placeholder="List parts to be repaired..."
+            />
+          </FormField>
+        </div>
       </FormSection>
 
       <FormSection
         id="advice"
         number={6}
-        title="Advice, Documents & Sign-off"
-        description="Advice to repairer/insurer, required documents, and assessor sign-off"
+        title="Remarks, Documents & Sign-off"
+        description="Remarks, required documents, and assessor sign-off"
       >
-        <AdviceSection register={register} errors={errors} readOnly={readOnly} />
+        <RemarksSection register={register} errors={errors} readOnly={readOnly} />
 
         <div className="mt-8">
           <DocumentChecklist
@@ -452,7 +571,13 @@ export function DatasheetForm({
             <input {...register('signOff.repairerPhone')} readOnly={readOnly} className="form-input" />
           </FormField>
           <FormField label="Seen By" required error={errors.signOff?.seenBy?.message}>
-            <input {...register('signOff.seenBy')} readOnly={readOnly} className="form-input" />
+            <input
+              {...register('signOff.seenBy')}
+              readOnly
+              className="form-input bg-slate-50 text-slate-700"
+              title="Filled automatically from your logged-in account"
+            />
+            <p className="mt-1 text-xs text-slate-500">Set automatically from your account</p>
           </FormField>
           <FormField
             label="Date and Time"
@@ -483,6 +608,8 @@ export function DatasheetForm({
           />
         </FormField>
       </FormSection>
+        </>
+      )}
 
       {submitError && (
         <div className="alert-error">
@@ -493,17 +620,23 @@ export function DatasheetForm({
 
       {!readOnly && (
         <div className="form-action-bar flex flex-wrap gap-3">
+          <Link href="/datasheets" className="btn-secondary">
+            <ArrowLeft className="h-4 w-4" />
+            Dashboard
+          </Link>
           <button type="button" onClick={onSaveDraft} className="btn-secondary" disabled={isSubmitting}>
             <Save className="h-4 w-4" />
             Save Draft
           </button>
-          <button type="submit" className="btn-primary" disabled={isSubmitting}>
-            <Send className="h-4 w-4" />
-            {isSubmitting ? 'Submitting…' : 'Submit Datasheet'}
-          </button>
+          {status === 'draft' && (
+            <button type="submit" className="btn-primary" disabled={isSubmitting}>
+              <Send className="h-4 w-4" />
+              {isSubmitting ? 'Submitting…' : isInspectionOnly ? 'Submit Inspection' : 'Submit Datasheet'}
+            </button>
+          )}
           <button type="button" onClick={onExportPdf} className="btn-secondary">
             <FileText className="h-4 w-4" />
-            Export PDF
+            {isInspectionOnly ? 'Export Datasheet PDF' : 'Export PDF'}
           </button>
           <button
             type="button"
@@ -517,7 +650,11 @@ export function DatasheetForm({
       )}
 
       {readOnly && (
-        <div className="form-action-bar">
+        <div className="form-action-bar flex flex-wrap gap-3">
+          <Link href="/datasheets" className="btn-secondary">
+            <ArrowLeft className="h-4 w-4" />
+            Dashboard
+          </Link>
           <button type="button" onClick={onExportPdf} className="btn-primary">
             <FileText className="h-4 w-4" />
             Export PDF

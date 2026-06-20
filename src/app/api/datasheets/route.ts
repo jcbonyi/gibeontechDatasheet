@@ -1,7 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { query } from '@/lib/db';
+import {
+  getDatasheetById,
+  insertDatasheetRecord,
+  listDatasheets,
+  logDatasheetAudit,
+  query,
+} from '@/lib/db';
+import { applySeenBy } from '@/lib/auth';
+import { getAuthUser, unauthorized } from '@/lib/api';
 import { handleRouteError } from '@/lib/routeErrors';
-import { createDefaultFormData } from '@/types/datasheet';
+import { canViewAllDatasheets } from '@/lib/permissions';
+import { createDefaultFormData, type DatasheetStatus } from '@/types/datasheet';
 
 function extractSearchFields(formData: Record<string, unknown>) {
   const basic = (formData.basicInfo || {}) as Record<string, string>;
@@ -25,36 +34,24 @@ async function nextSerialNo(): Promise<string> {
 
 export async function GET(req: NextRequest) {
   try {
+    const user = await getAuthUser(req);
+    if (!user) return unauthorized();
+
     const { searchParams } = new URL(req.url);
-    const status = searchParams.get('status');
-    const claimNo = searchParams.get('claimNo');
-    const regNo = searchParams.get('regNo');
+    const datasheets = await listDatasheets({
+      status: searchParams.get('status') || undefined,
+      claimNo: searchParams.get('claimNo') || undefined,
+      regNo: searchParams.get('regNo') || undefined,
+      assessorId: searchParams.get('assessorId')
+        ? Number(searchParams.get('assessorId'))
+        : undefined,
+      fromDate: searchParams.get('fromDate') || undefined,
+      toDate: searchParams.get('toDate') || undefined,
+      viewAll: canViewAllDatasheets(user.role),
+      scopeUserId: canViewAllDatasheets(user.role) ? undefined : user.id,
+    });
 
-    const params: unknown[] = [];
-    const conditions: string[] = [];
-
-    if (status) {
-      params.push(status);
-      conditions.push(`status = $${params.length}`);
-    }
-    if (claimNo) {
-      params.push(`%${claimNo}%`);
-      conditions.push(`claim_no ILIKE $${params.length}`);
-    }
-    if (regNo) {
-      params.push(`%${regNo}%`);
-      conditions.push(`reg_no ILIKE $${params.length}`);
-    }
-
-    const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
-    const result = await query(
-      `SELECT id, serial_no, status, claim_no, reg_no, created_at, updated_at
-       FROM datasheets ${where}
-       ORDER BY updated_at DESC`,
-      params,
-    );
-
-    return NextResponse.json({ datasheets: result.rows });
+    return NextResponse.json({ datasheets });
   } catch (err) {
     return handleRouteError(err, 'GET /api/datasheets');
   }
@@ -62,20 +59,34 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
+    const user = await getAuthUser(req);
+    if (!user) return unauthorized();
+
     const body = await req.json();
-    const formData = body.formData || createDefaultFormData();
-    const status = body.status === 'submitted' ? 'submitted' : 'draft';
+    let formData = (body.formData || createDefaultFormData()) as Record<string, unknown>;
+    const status = (body.status === 'submitted' ? 'submitted' : 'draft') as DatasheetStatus;
+    formData = applySeenBy(formData, user.name);
+
     const { claimNo, regNo } = extractSearchFields(formData);
     const serialNo = await nextSerialNo();
 
-    const result = await query(
-      `INSERT INTO datasheets (serial_no, status, form_data, claim_no, reg_no)
-       VALUES ($1, $2, $3, $4, $5)
-       RETURNING *`,
-      [serialNo, status, formData, claimNo, regNo],
-    );
+    const datasheet = await insertDatasheetRecord({
+      serial_no: serialNo,
+      status,
+      created_by: user.id,
+      updated_by: user.id,
+      form_data: formData,
+      claim_no: claimNo,
+      reg_no: regNo,
+      assigned_to: null,
+      assigned_by: null,
+      assigned_at: null,
+      reopen_reason: null,
+    });
 
-    return NextResponse.json({ datasheet: result.rows[0] }, { status: 201 });
+    await logDatasheetAudit(datasheet.id, user.id, user.name, 'created', { status });
+
+    return NextResponse.json({ datasheet }, { status: 201 });
   } catch (err) {
     return handleRouteError(err, 'POST /api/datasheets');
   }

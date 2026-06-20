@@ -1,14 +1,20 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
+import { AuthGuard } from '@/components/AuthGuard';
 import { AppShell } from '@/components/AppShell';
 import { DatasheetForm } from '@/components/DatasheetForm';
-import { createDefaultFormData, DatasheetFormData } from '@/types/datasheet';
+import { PageHeader } from '@/components/PageHeader';
+import { createDefaultFormData, DatasheetFormData, type DatasheetStatus } from '@/types/datasheet';
+import { useAuth } from '@/context/AuthContext';
 
 export default function NewDatasheetPage() {
   const router = useRouter();
+  const { user } = useAuth();
 
-  const handleSave = async (formData: DatasheetFormData, status: 'draft' | 'submitted') => {
+  const initialData = createDefaultFormData(user?.name);
+
+  const handleSave = async (formData: DatasheetFormData, status: DatasheetStatus) => {
     const res = await fetch('/api/datasheets', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -16,20 +22,15 @@ export default function NewDatasheetPage() {
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.message || 'Failed to save');
-    if (status === 'submitted') {
-      router.push(`/datasheets/${data.datasheet.id}`);
-    } else {
-      router.replace(`/datasheets/${data.datasheet.id}`);
-    }
+    router.replace(`/datasheets/${data.datasheet.id}`);
   };
 
   return (
-    <AppShell>
-      <div className="mb-6">
-        <h1 className="page-title">New Datasheet</h1>
-        <p className="page-subtitle">Capture motor claim assessment data</p>
-      </div>
-      <DatasheetForm initialData={createDefaultFormData()} onSave={handleSave} />
-    </AppShell>
+    <AuthGuard>
+      <AppShell>
+        <PageHeader title="New Datasheet" subtitle="Capture motor claim assessment data" />
+        <DatasheetForm initialData={initialData} onSave={handleSave} />
+      </AppShell>
+    </AuthGuard>
   );
 }

@@ -1,5 +1,6 @@
 import { z } from 'zod';
-import { CONDITION_ITEMS, FORM_TYPES } from '@/types/datasheet';
+import { inspectionFormSchema } from '@/inspection/schemas/inspectionSchema';
+import { CONDITION_ITEMS, DASHBOARD_WARNING_LIGHTS, FORM_TYPES } from '@/types/datasheet';
 
 const formTypeSchema = z.enum(FORM_TYPES as [string, ...string[]]);
 
@@ -23,7 +24,14 @@ const conditionSchema = z.object(
   >,
 );
 
-export const datasheetFormSchema = z.object({
+const dashboardWarningLightsSchema = z.object(
+  Object.fromEntries(DASHBOARD_WARNING_LIGHTS.map((light) => [light.key, z.boolean()])) as Record<
+    (typeof DASHBOARD_WARNING_LIGHTS)[number]['key'],
+    z.ZodBoolean
+  >,
+);
+
+const baseDatasheetSchema = z.object({
   header: z.object({
     formTypes: z.array(formTypeSchema).min(1, 'Select at least one form type'),
     date: z.string(),
@@ -31,13 +39,13 @@ export const datasheetFormSchema = z.object({
   }),
   basicInfo: z.object({
     documentsProvided: z.string(),
-    clientInsurer: z.string().min(1, 'Client/Insurer is required'),
+    clientInsurer: z.string(),
     ownerInsured: z.string(),
     instructedBy: z.string(),
     policyNo: z.string(),
     claimNo: z.string(),
     dateOfAccident: z.string(),
-    regNo: z.string().min(1, 'Registration number is required'),
+    regNo: z.string(),
     make: z.string(),
     modelNo: z.string(),
     year: z.string(),
@@ -57,20 +65,22 @@ export const datasheetFormSchema = z.object({
     tyreBrand: z.string(),
     tyreSize: z.string(),
     tyreType: z.enum(['Inflatable', 'Tubeless', '']),
+    dashboardWarningLights: dashboardWarningLightsSchema,
+    dashboardWarningLightsNotes: z.string(),
   }),
   vehicleCondition: conditionSchema,
   damage: z.object({
-    damageSummary: z.string().min(1, 'Damage summary is required'),
+    damageSummary: z.string(),
     preAccidentDefects: z.string(),
     vehicleDiagram: z.array(vehicleDiagramMarkSchema),
-    garageArrival: z.enum(['Towed', 'Driven', 'Carried', '']).refine((v) => v !== '', {
-      message: 'Select how the vehicle reached the garage',
-    }),
+    garageArrival: z.enum(['Towed', 'Driven', 'Carried', '']),
   }),
-  advice: z.object({
-    adviceToRepairer: z.string(),
-    adviceToInsurer: z.string(),
+  parts: z.object({
+    toBeReplaced: z.string(),
+    toBePainted: z.string(),
+    toBeRepaired: z.string(),
   }),
+  remarks: z.string(),
   documents: z.object({
     claim_form: documentItemSchema,
     police_abstract: documentItemSchema,
@@ -81,12 +91,86 @@ export const datasheetFormSchema = z.object({
   signOff: z.object({
     repairerContactPerson: z.string(),
     repairerPhone: z.string(),
-    seenBy: z.string().min(1, 'Seen by is required'),
-    signatureDateTime: z.string().min(1, 'Signature date/time is required'),
-    assessorSignature: z.string().min(1, 'Assessor signature is required'),
+    seenBy: z.string(),
+    signatureDateTime: z.string(),
+    assessorSignature: z.string(),
   }),
+  inspection: inspectionFormSchema.optional(),
 });
 
-export const draftDatasheetSchema = datasheetFormSchema.deepPartial();
+function isInspectionOnly(formTypes: string[]) {
+  return formTypes.length === 1 && formTypes[0] === 'Inspection';
+}
+
+export const datasheetFormSchema = baseDatasheetSchema.superRefine((data, ctx) => {
+  const inspectionOnly = isInspectionOnly(data.header.formTypes);
+  const hasInspection = data.header.formTypes.includes('Inspection');
+
+  if (hasInspection) {
+    const result = inspectionFormSchema.safeParse(data.inspection);
+    if (!result.success) {
+      result.error.issues.forEach((issue) => {
+        ctx.addIssue({
+          ...issue,
+          path: ['inspection', ...(issue.path || [])],
+        });
+      });
+    }
+  }
+
+  if (inspectionOnly) return;
+
+  if (!data.basicInfo.clientInsurer.trim()) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'Client/Insurer is required',
+      path: ['basicInfo', 'clientInsurer'],
+    });
+  }
+  if (!data.basicInfo.regNo.trim()) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'Registration number is required',
+      path: ['basicInfo', 'regNo'],
+    });
+  }
+  if (!data.damage.damageSummary.trim()) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'Damage summary is required',
+      path: ['damage', 'damageSummary'],
+    });
+  }
+  if (!data.damage.garageArrival) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'Select how the vehicle reached the garage',
+      path: ['damage', 'garageArrival'],
+    });
+  }
+  if (!data.signOff.seenBy.trim()) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'Seen by is required',
+      path: ['signOff', 'seenBy'],
+    });
+  }
+  if (!data.signOff.signatureDateTime.trim()) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'Signature date/time is required',
+      path: ['signOff', 'signatureDateTime'],
+    });
+  }
+  if (!data.signOff.assessorSignature.trim()) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'Assessor signature is required',
+      path: ['signOff', 'assessorSignature'],
+    });
+  }
+});
+
+export const draftDatasheetSchema = baseDatasheetSchema.deepPartial();
 
 export type DatasheetFormInput = z.input<typeof datasheetFormSchema>;

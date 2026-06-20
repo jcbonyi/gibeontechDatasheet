@@ -1,6 +1,21 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { query } from '@/lib/db';
+import {
+  getDatasheetAuditLog,
+  getDatasheetById,
+  getActiveUsers,
+  logDatasheetAudit,
+  updateDatasheetRecord,
+  query,
+} from '@/lib/db';
+import { applySeenBy, canViewDatasheet } from '@/lib/auth';
+import { forbidden, getAuthUser, unauthorized } from '@/lib/api';
 import { handleRouteError } from '@/lib/routeErrors';
+import {
+  canDeleteDatasheet,
+  canEditDatasheet,
+  getDatasheetPermissions,
+} from '@/lib/permissions';
+import type { DatasheetStatus } from '@/types/datasheet';
 
 function extractSearchFields(formData: Record<string, unknown>) {
   const basic = (formData.basicInfo || {}) as Record<string, string>;
@@ -11,18 +26,34 @@ function extractSearchFields(formData: Record<string, unknown>) {
 }
 
 export async function GET(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
+    const user = await getAuthUser(req);
+    if (!user) return unauthorized();
+
     const { id } = await params;
-    const result = await query('SELECT * FROM datasheets WHERE id = $1', [Number(id)]);
-    const datasheet = result.rows[0];
+    const datasheet = await getDatasheetById(Number(id));
     if (!datasheet) {
       return NextResponse.json({ message: 'Not found' }, { status: 404 });
     }
+    if (!canViewDatasheet(user, datasheet)) return forbidden();
 
-    return NextResponse.json({ datasheet });
+    const permissions = getDatasheetPermissions(user, datasheet);
+    const audit = await getDatasheetAuditLog(datasheet.id);
+    const users = await getActiveUsers();
+    const userMap = new Map(users.map((u) => [u.id, u.name]));
+
+    return NextResponse.json({
+      datasheet: {
+        ...datasheet,
+        created_by_name: datasheet.created_by ? userMap.get(datasheet.created_by) || null : null,
+        assigned_to_name: datasheet.assigned_to ? userMap.get(datasheet.assigned_to) || null : null,
+      },
+      permissions,
+      audit,
+    });
   } catch (err) {
     return handleRouteError(err, 'GET /api/datasheets/[id]');
   }
@@ -33,36 +64,64 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
+    const user = await getAuthUser(req);
+    if (!user) return unauthorized();
+
     const { id } = await params;
-    const existing = await query('SELECT * FROM datasheets WHERE id = $1', [Number(id)]);
-    const datasheet = existing.rows[0];
+    const datasheet = await getDatasheetById(Number(id));
     if (!datasheet) {
       return NextResponse.json({ message: 'Not found' }, { status: 404 });
     }
+    if (!canEditDatasheet(user, datasheet)) return forbidden();
 
     const body = await req.json();
-    const formData = body.formData ?? datasheet.form_data;
-    const status = body.status ?? datasheet.status;
+    let formData = (body.formData ?? datasheet.form_data) as Record<string, unknown>;
+    const status = (body.status ?? datasheet.status) as DatasheetStatus;
+
+    if (status === 'approved' && user.role === 'OperationsManager') {
+      return forbidden();
+    }
+
+    formData = applySeenBy(formData, user.name);
     const { claimNo, regNo } = extractSearchFields(formData);
 
-    const result = await query(
-      `UPDATE datasheets SET status = $1, form_data = $2, claim_no = $3, reg_no = $4, updated_at = NOW()
-       WHERE id = $5 RETURNING *`,
-      [status, formData, claimNo, regNo, Number(id)],
-    );
+    const updated = await updateDatasheetRecord(Number(id), {
+      status,
+      updated_by: user.id,
+      form_data: formData,
+      claim_no: claimNo,
+      reg_no: regNo,
+    });
 
-    return NextResponse.json({ datasheet: result.rows[0] });
+    await logDatasheetAudit(datasheet.id, user.id, user.name, 'updated', {
+      status,
+      previousStatus: datasheet.status,
+    });
+
+    return NextResponse.json({ datasheet: updated });
   } catch (err) {
     return handleRouteError(err, 'PATCH /api/datasheets/[id]');
   }
 }
 
 export async function DELETE(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
+    const user = await getAuthUser(req);
+    if (!user) return unauthorized();
+    if (!canDeleteDatasheet(user)) return forbidden();
+
     const { id } = await params;
+    const datasheet = await getDatasheetById(Number(id));
+    if (!datasheet) {
+      return NextResponse.json({ message: 'Not found' }, { status: 404 });
+    }
+
+    await logDatasheetAudit(datasheet.id, user.id, user.name, 'deleted', {
+      serial_no: datasheet.serial_no,
+    });
     await query('DELETE FROM datasheets WHERE id = $1', [Number(id)]);
     return NextResponse.json({ ok: true });
   } catch (err) {

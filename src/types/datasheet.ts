@@ -1,12 +1,41 @@
-export type DatasheetStatus = 'draft' | 'submitted';
+export type DatasheetStatus = 'draft' | 'submitted' | 'under_review' | 'approved';
 
-export type FormType = 'Assessment' | 'Re-inspection' | 'Supplementary' | 'Technical';
+export const DATASHEET_STATUSES: DatasheetStatus[] = [
+  'draft',
+  'submitted',
+  'under_review',
+  'approved',
+];
+
+export type UserRole = 'Admin' | 'PrincipalOfficer' | 'OperationsManager' | 'Assessor';
+
+export const USER_ROLES: UserRole[] = [
+  'Admin',
+  'PrincipalOfficer',
+  'OperationsManager',
+  'Assessor',
+];
+
+export const ROLE_LABELS: Record<UserRole, string> = {
+  Admin: 'Admin',
+  PrincipalOfficer: 'Principal Officer',
+  OperationsManager: 'Operations Manager',
+  Assessor: 'Assessor',
+};
+
+export type FormType =
+  | 'Assessment'
+  | 'Re-inspection'
+  | 'Supplementary'
+  | 'Technical'
+  | 'Inspection';
 
 export const FORM_TYPES: FormType[] = [
   'Assessment',
   'Re-inspection',
   'Supplementary',
   'Technical',
+  'Inspection',
 ];
 
 export type GarageArrival = 'Towed' | 'Driven' | 'Carried' | '';
@@ -27,6 +56,25 @@ export const TYRE_TYPE_OPTIONS: { value: TyreType; label: string }[] = [
 ];
 
 export const FUEL_TYPES = ['Petrol', 'Diesel', 'Hybrid', 'Electric', 'LPG', 'Other'];
+
+export const DASHBOARD_WARNING_LIGHTS = [
+  { key: 'checkEngine', label: 'Check Engine / MIL' },
+  { key: 'abs', label: 'ABS' },
+  { key: 'airbag', label: 'Airbag / SRS' },
+  { key: 'battery', label: 'Battery / Charging' },
+  { key: 'oilPressure', label: 'Oil Pressure' },
+  { key: 'coolant', label: 'Coolant / Temperature' },
+  { key: 'brake', label: 'Brake System' },
+  { key: 'handbrake', label: 'Handbrake' },
+  { key: 'tpms', label: 'TPMS' },
+  { key: 'tractionControl', label: 'Traction Control / ESP' },
+  { key: 'glowPlug', label: 'Glow Plug (Diesel)' },
+  { key: 'dpf', label: 'DPF / Emissions' },
+  { key: 'service', label: 'Service / Maintenance' },
+  { key: 'noneObserved', label: 'None Observed' },
+] as const;
+
+export type DashboardWarningLightKey = (typeof DASHBOARD_WARNING_LIGHTS)[number]['key'];
 
 export const CONDITION_ITEMS = [
   'Ignition',
@@ -74,6 +122,9 @@ export interface VehicleDiagramMark {
   zone?: string;
 }
 
+import type { InspectionFormData } from '@/inspection/types/inspection';
+import { createDefaultFormData as createDefaultInspectionData } from '@/inspection/types/inspection';
+
 export interface DatasheetFormData {
   header: {
     formTypes: FormType[];
@@ -108,6 +159,8 @@ export interface DatasheetFormData {
     tyreBrand: string;
     tyreSize: string;
     tyreType: TyreType;
+    dashboardWarningLights: Record<DashboardWarningLightKey, boolean>;
+    dashboardWarningLightsNotes: string;
   };
   vehicleCondition: Record<ConditionItemKey, string>;
   damage: {
@@ -116,10 +169,12 @@ export interface DatasheetFormData {
     vehicleDiagram: VehicleDiagramMark[];
     garageArrival: GarageArrival;
   };
-  advice: {
-    adviceToRepairer: string;
-    adviceToInsurer: string;
+  parts: {
+    toBeReplaced: string;
+    toBePainted: string;
+    toBeRepaired: string;
   };
+  remarks: string;
   documents: Record<DocumentType, DocumentChecklistItem>;
   signOff: {
     repairerContactPerson: string;
@@ -128,6 +183,7 @@ export interface DatasheetFormData {
     signatureDateTime: string;
     assessorSignature: string;
   };
+  inspection?: InspectionFormData;
 }
 
 export const DOCUMENT_CHECKLIST: {
@@ -147,8 +203,14 @@ export const FORM_SECTIONS = [
   { id: 'assessment', title: 'Assessment & Tyres', number: 3 },
   { id: 'condition', title: 'Vehicle Condition', number: 4 },
   { id: 'damage', title: 'Damage & Transport', number: 5 },
-  { id: 'advice', title: 'Advice, Documents & Sign-off', number: 6 },
+  { id: 'advice', title: 'Remarks, Documents & Sign-off', number: 6 },
 ] as const;
+
+function createDashboardWarningLightsDefaults(): Record<DashboardWarningLightKey, boolean> {
+  return Object.fromEntries(
+    DASHBOARD_WARNING_LIGHTS.map((light) => [light.key, false]),
+  ) as Record<DashboardWarningLightKey, boolean>;
+}
 
 function createConditionDefaults(): Record<ConditionItemKey, string> {
   return Object.fromEntries(CONDITION_ITEMS.map((item) => [item, ''])) as Record<
@@ -167,7 +229,7 @@ function createDocumentDefaults(): Record<DocumentType, DocumentChecklistItem> {
   };
 }
 
-export function createDefaultFormData(): DatasheetFormData {
+export function createDefaultFormData(seenByName = ''): DatasheetFormData {
   const now = new Date();
   return {
     header: {
@@ -203,6 +265,8 @@ export function createDefaultFormData(): DatasheetFormData {
       tyreBrand: '',
       tyreSize: '',
       tyreType: '',
+      dashboardWarningLights: createDashboardWarningLightsDefaults(),
+      dashboardWarningLightsNotes: '',
     },
     vehicleCondition: createConditionDefaults(),
     damage: {
@@ -211,19 +275,38 @@ export function createDefaultFormData(): DatasheetFormData {
       vehicleDiagram: [],
       garageArrival: '',
     },
-    advice: {
-      adviceToRepairer: '',
-      adviceToInsurer: '',
+    parts: {
+      toBeReplaced: '',
+      toBePainted: '',
+      toBeRepaired: '',
     },
+    remarks: '',
     documents: createDocumentDefaults(),
     signOff: {
       repairerContactPerson: '',
       repairerPhone: '',
-      seenBy: '',
+      seenBy: seenByName,
       signatureDateTime: '',
       assessorSignature: '',
     },
+    inspection: undefined,
   };
+}
+
+export function createDefaultInspectionFormData(inspectorName = ''): InspectionFormData {
+  const data = createDefaultInspectionData();
+  if (inspectorName) {
+    data.vehicleDetails.inspectorName = inspectorName;
+  }
+  return data;
+}
+
+export function isInspectionOnlyForm(formTypes: FormType[]): boolean {
+  return formTypes.length === 1 && formTypes[0] === 'Inspection';
+}
+
+export function hasInspectionForm(formTypes: FormType[]): boolean {
+  return formTypes.includes('Inspection');
 }
 
 export function countReceivedDocuments(documents: Record<DocumentType, DocumentChecklistItem>): {
@@ -235,6 +318,30 @@ export function countReceivedDocuments(documents: Record<DocumentType, DocumentC
   return { received, total };
 }
 
-export function conditionItemKey(name: string): string {
-  return name.replace(/[^a-zA-Z0-9]/g, '_').toLowerCase();
+export function mergeFormData(
+  loaded: Partial<DatasheetFormData> & {
+    advice?: { adviceToRepairer?: string; adviceToInsurer?: string };
+  },
+): DatasheetFormData {
+  const defaults = createDefaultFormData();
+  const legacyRemarks = [loaded.advice?.adviceToRepairer, loaded.advice?.adviceToInsurer]
+    .filter(Boolean)
+    .join('\n\n');
+
+  return {
+    ...defaults,
+    ...loaded,
+    parts: { ...defaults.parts, ...loaded.parts },
+    assessment: {
+      ...defaults.assessment,
+      ...loaded.assessment,
+      dashboardWarningLights: {
+        ...defaults.assessment.dashboardWarningLights,
+        ...loaded.assessment?.dashboardWarningLights,
+      },
+    },
+    documents: { ...defaults.documents, ...loaded.documents },
+    inspection: loaded.inspection ?? defaults.inspection,
+    remarks: loaded.remarks ?? legacyRemarks ?? defaults.remarks,
+  };
 }

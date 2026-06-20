@@ -1,40 +1,70 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
+import { AuthGuard } from '@/components/AuthGuard';
 import { AppShell } from '@/components/AppShell';
 import { DatasheetForm } from '@/components/DatasheetForm';
-import { DatasheetFormData, createDefaultFormData } from '@/types/datasheet';
+import { PageHeader } from '@/components/PageHeader';
+import { DatasheetFormData, mergeFormData, type DatasheetStatus } from '@/types/datasheet';
+import { useAuth } from '@/context/AuthContext';
+
+interface DatasheetPermissions {
+  canEdit: boolean;
+  canAssign: boolean;
+  canReopen: boolean;
+  canMarkUnderReview: boolean;
+  canApprove: boolean;
+  canDuplicate: boolean;
+  canDelete: boolean;
+}
+
+interface AuditEntry {
+  id: number;
+  action: string;
+  user_name: string | null;
+  details: Record<string, unknown>;
+  created_at: string;
+}
 
 export default function EditDatasheetPage() {
   const params = useParams();
+  const router = useRouter();
+  const { user } = useAuth();
   const id = Number(params.id);
   const [formData, setFormData] = useState<DatasheetFormData | null>(null);
   const [serialNo, setSerialNo] = useState('');
-  const [status, setStatus] = useState<'draft' | 'submitted'>('draft');
+  const [status, setStatus] = useState<DatasheetStatus>('draft');
+  const [assignedToName, setAssignedToName] = useState<string | null>(null);
+  const [permissions, setPermissions] = useState<DatasheetPermissions | null>(null);
+  const [audit, setAudit] = useState<AuditEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [actionMessage, setActionMessage] = useState('');
 
-  useEffect(() => {
+  const reload = () => {
     fetch(`/api/datasheets/${id}`)
       .then(async (res) => {
         const data = await res.json();
         if (!res.ok) throw new Error(data.message || 'Failed to load');
-        const defaults = createDefaultFormData();
-        const loaded = (data.datasheet.form_data as DatasheetFormData) || defaults;
-        setFormData({
-          ...defaults,
-          ...loaded,
-          documents: { ...defaults.documents, ...loaded.documents },
-        });
+        const loaded = mergeFormData(data.datasheet.form_data as DatasheetFormData);
+        if (user?.name) loaded.signOff.seenBy = user.name;
+        setFormData(loaded);
         setSerialNo(data.datasheet.serial_no);
         setStatus(data.datasheet.status);
+        setAssignedToName(data.datasheet.assigned_to_name || null);
+        setPermissions(data.permissions);
+        setAudit(data.audit || []);
       })
       .catch((err) => setError(err.message))
       .finally(() => setLoading(false));
-  }, [id]);
+  };
 
-  const handleSave = async (data: DatasheetFormData, newStatus: 'draft' | 'submitted') => {
+  useEffect(() => {
+    reload();
+  }, [id, user?.name]);
+
+  const handleSave = async (data: DatasheetFormData, newStatus: DatasheetStatus) => {
     const res = await fetch(`/api/datasheets/${id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
@@ -43,41 +73,123 @@ export default function EditDatasheetPage() {
     const result = await res.json();
     if (!res.ok) throw new Error(result.message || 'Failed to save');
     setStatus(result.datasheet.status);
+    reload();
   };
+
+  const runAction = async (url: string, method: string, body?: Record<string, unknown>) => {
+    setActionMessage('');
+    const res = await fetch(url, {
+      method,
+      headers: body ? { 'Content-Type': 'application/json' } : undefined,
+      body: body ? JSON.stringify(body) : undefined,
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      setActionMessage(data.message || 'Action failed');
+      return;
+    }
+    setActionMessage('Action completed');
+    reload();
+  };
+
+  const isReadOnly = !permissions?.canEdit;
 
   if (loading) {
     return (
-      <AppShell>
-        <p className="text-sm text-slate-500">Loading datasheet...</p>
-      </AppShell>
+      <AuthGuard>
+        <AppShell>
+          <p className="text-sm text-slate-500">Loading datasheet...</p>
+        </AppShell>
+      </AuthGuard>
     );
   }
 
   if (error || !formData) {
     return (
-      <AppShell>
-        <p className="text-sm text-red-600">{error || 'Datasheet not found'}</p>
-      </AppShell>
+      <AuthGuard>
+        <AppShell>
+          <p className="text-sm text-red-600">{error || 'Datasheet not found'}</p>
+        </AppShell>
+      </AuthGuard>
     );
   }
 
   return (
-    <AppShell>
-      <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
-        <div>
-          <h1 className="page-title">{serialNo || 'Datasheet'}</h1>
-          <p className="page-subtitle">
-            Status: <span className="font-medium capitalize text-brand-700">{status}</span>
-          </p>
-        </div>
-      </div>
-      <DatasheetForm
-        initialData={formData}
-        datasheetId={id}
-        serialNo={serialNo}
-        status={status}
-        onSave={handleSave}
-      />
-    </AppShell>
+    <AuthGuard>
+      <AppShell>
+        <PageHeader
+          title={serialNo || 'Datasheet'}
+          subtitle={`Status: ${status.replace('_', ' ')}${assignedToName ? ` · Assigned to ${assignedToName}` : ''}`}
+        />
+
+        {(permissions?.canReopen || permissions?.canMarkUnderReview || permissions?.canApprove || permissions?.canDuplicate) && (
+          <div className="section-card mb-6 flex flex-wrap gap-2">
+            {permissions.canMarkUnderReview && (
+              <button type="button" className="btn-secondary" onClick={() => runAction(`/api/datasheets/${id}/review`, 'PATCH', { action: 'under_review' })}>
+                Mark Under Review
+              </button>
+            )}
+            {permissions.canApprove && (
+              <button type="button" className="btn-secondary" onClick={() => runAction(`/api/datasheets/${id}/review`, 'PATCH', { action: 'approve' })}>
+                Approve
+              </button>
+            )}
+            {permissions.canReopen && (
+              <button
+                type="button"
+                className="btn-secondary"
+                onClick={() => {
+                  const reason = prompt('Reason for reopening:');
+                  if (reason) runAction(`/api/datasheets/${id}/reopen`, 'POST', { reason });
+                }}
+              >
+                Reopen as Draft
+              </button>
+            )}
+            {permissions.canDuplicate && (
+              <button
+                type="button"
+                className="btn-secondary"
+                onClick={async () => {
+                  const res = await fetch(`/api/datasheets/${id}/duplicate`, { method: 'POST' });
+                  const data = await res.json();
+                  if (res.ok) router.push(`/datasheets/${data.datasheet.id}`);
+                  else setActionMessage(data.message || 'Duplicate failed');
+                }}
+              >
+                Duplicate
+              </button>
+            )}
+            {actionMessage && <p className="w-full text-sm text-emerald-600">{actionMessage}</p>}
+          </div>
+        )}
+
+        {audit.length > 0 && (
+          <div className="section-card mb-6">
+            <h3 className="mb-3 text-sm font-semibold text-slate-700">Audit Trail</h3>
+            <ul className="space-y-2 text-sm text-slate-600">
+              {audit.slice(0, 8).map((entry) => (
+                <li key={entry.id}>
+                  <span className="font-medium text-slate-800">{entry.action}</span>
+                  {' · '}
+                  {entry.user_name || 'System'}
+                  {' · '}
+                  {new Date(entry.created_at).toLocaleString()}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        <DatasheetForm
+          initialData={formData}
+          datasheetId={id}
+          serialNo={serialNo}
+          status={status}
+          readOnly={isReadOnly}
+          onSave={handleSave}
+        />
+      </AppShell>
+    </AuthGuard>
   );
 }

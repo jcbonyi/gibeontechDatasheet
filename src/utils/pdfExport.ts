@@ -1,6 +1,7 @@
 import jsPDF from 'jspdf';
 import {
   CONDITION_ITEMS,
+  DASHBOARD_WARNING_LIGHTS,
   DOCUMENT_CHECKLIST,
   DatasheetFormData,
   FORM_TYPES,
@@ -236,6 +237,47 @@ function drawConditionGrid(pdf: jsPDF, data: DatasheetFormData, y: number): numb
   return y + rows * rowH;
 }
 
+function drawDashboardWarningLights(pdf: jsPDF, data: DatasheetFormData, y: number): number {
+  const gap = GRID_GAP;
+  const boxH = 15;
+  y += gap;
+
+  drawBox(pdf, ML, y, CW, boxH);
+  drawFieldHeader(pdf, ML, y, CW, 'Dashboard Warning Lights Noted');
+
+  pdf.setFont('helvetica', 'normal');
+  pdf.setFontSize(4.8);
+  pdf.setTextColor(INK.r, INK.g, INK.b);
+
+  let dx = ML + 1.5;
+  let rowY = y + HEADER_BAND_H + 2.2;
+  const maxX = ML + CW - 2;
+
+  DASHBOARD_WARNING_LIGHTS.forEach((light) => {
+    const labelW = pdf.getTextWidth(light.label) + 5;
+    if (dx + labelW > maxX) {
+      dx = ML + 1.5;
+      rowY += 3.2;
+    }
+    drawCheckbox(
+      pdf,
+      dx,
+      rowY,
+      data.assessment.dashboardWarningLights?.[light.key] ?? false,
+    );
+    pdf.text(light.label, dx + 3.2, rowY);
+    dx += labelW + 2;
+  });
+
+  const notes = data.assessment.dashboardWarningLightsNotes?.trim();
+  if (notes) {
+    pdf.setFontSize(5);
+    pdf.text(`Notes: ${clip(notes, 120)}`, ML + 1.5, rowY + 3.5);
+  }
+
+  return y + boxH;
+}
+
 function drawVehicleDiagram(
   pdf: jsPDF,
   marks: DatasheetFormData['damage']['vehicleDiagram'],
@@ -304,26 +346,37 @@ function drawDamageSection(
     pdf.text(opt.toUpperCase(), ox + 3.5, y3 + 2.5);
   });
 
-  return y3 + 5;
+  const y4 = y3 + 5 + gap;
+  const partW = (CW - gap * 2) / 3;
+  const partH = 10;
+  const partFields: [string, string][] = [
+    ['Parts to be Replaced', data.parts?.toBeReplaced ?? ''],
+    ['Parts to be Painted', data.parts?.toBePainted ?? ''],
+    ['Parts to be Repaired', data.parts?.toBeRepaired ?? ''],
+  ];
+  partFields.forEach(([label, value], i) => {
+    const x = ML + i * (partW + gap);
+    drawBox(pdf, x, y4, partW, partH);
+    drawFieldHeader(pdf, x, y4, partW, label);
+    pdf.setFont('helvetica', 'normal');
+    pdf.setFontSize(5);
+    pdf.setTextColor(INK.r, INK.g, INK.b);
+    pdf.text(pdf.splitTextToSize(value || ' ', partW - 1.6).slice(0, 2).join(' '), x + 0.8, y4 + HEADER_BAND_H + 2.2);
+  });
+
+  return y4 + partH + 2;
 }
 
-function drawAdviceAndDocs(pdf: jsPDF, data: DatasheetFormData, y: number): number {
+function drawRemarksAndDocs(pdf: jsPDF, data: DatasheetFormData, y: number): number {
   const gap = GRID_GAP;
-  const half = (CW - gap) / 2;
-  const h = 12;
+  const h = 10;
 
-  drawBox(pdf, ML, y, half, h);
-  drawFieldHeader(pdf, ML, y, half, 'Advice to Repairer');
+  drawBox(pdf, ML, y, CW, h);
+  drawFieldHeader(pdf, ML, y, CW, 'Remarks');
   pdf.setFont('helvetica', 'normal');
   pdf.setFontSize(5.3);
   pdf.setTextColor(INK.r, INK.g, INK.b);
-  pdf.text(pdf.splitTextToSize(data.advice.adviceToRepairer || ' ', half - 1.6).slice(0, 2).join(' '), ML + 0.8, y + HEADER_BAND_H + 2.2);
-
-  drawBox(pdf, ML + half + gap, y, half, h);
-  drawFieldHeader(pdf, ML + half + gap, y, half, 'Advice to Insurer');
-  pdf.setFont('helvetica', 'normal');
-  pdf.setFontSize(5.3);
-  pdf.text(pdf.splitTextToSize(data.advice.adviceToInsurer || ' ', half - 1.6).slice(0, 2).join(' '), ML + half + gap + 0.8, y + HEADER_BAND_H + 2.2);
+  pdf.text(pdf.splitTextToSize(data.remarks || ' ', CW - 1.6).slice(0, 3).join(' '), ML + 0.8, y + HEADER_BAND_H + 2.2);
 
   y += h + gap;
   drawBox(pdf, ML, y, CW, 7);
@@ -389,8 +442,9 @@ export async function exportDatasheetPdf(data: DatasheetFormData, serialNo: stri
   y = drawBasicGrid(pdf, data, y);
   y = drawAssessment(pdf, data, y);
   y = drawConditionGrid(pdf, data, y);
+  y = drawDashboardWarningLights(pdf, data, y);
   y = drawDamageSection(pdf, data, y, diagramImage);
-  y = drawAdviceAndDocs(pdf, data, y);
+  y = drawRemarksAndDocs(pdf, data, y);
   drawSignOff(pdf, data, y);
 
   pdf.save(`GibeonTech-Datasheet-${serialNo}.pdf`);

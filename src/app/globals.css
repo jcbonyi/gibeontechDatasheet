@@ -92,6 +92,14 @@
     @apply bg-amber-100 text-amber-800 ring-1 ring-amber-200/60;
   }
 
+  .status-review {
+    @apply bg-sky-100 text-sky-800 ring-1 ring-sky-200/60;
+  }
+
+  .status-approved {
+    @apply bg-violet-100 text-violet-800 ring-1 ring-violet-200/60;
+  }
+
   .form-action-bar {
     @apply no-print sticky bottom-0 z-20 -mx-4 mt-8 border-t border-slate-200/80 bg-white/95 px-4 py-4 shadow-[0_-8px_30px_rgba(15,23,42,0.08)] backdrop-blur-md sm:-mx-0 sm:rounded-2xl sm:border sm:shadow-lg;
   }
