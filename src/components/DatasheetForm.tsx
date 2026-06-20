@@ -17,7 +17,6 @@ import {
   TYRE_TYPE_OPTIONS,
   DASHBOARD_WARNING_LIGHTS,
   hasInspectionForm,
-  isInspectionOnlyForm,
   type DatasheetStatus,
 } from '@/types/datasheet';
 import { EmbeddedInspectionForm } from '@/inspection/components/EmbeddedInspectionForm';
@@ -81,7 +80,6 @@ export function DatasheetForm({
   const diagramMarks = watch('damage.vehicleDiagram');
   const formTypes = watch('header.formTypes');
   const isInspectionMode = hasInspectionForm(formTypes);
-  const isInspectionOnly = isInspectionOnlyForm(formTypes);
 
   useEffect(() => {
     if (initialData) reset(initialData);
@@ -136,15 +134,25 @@ export function DatasheetForm({
 
   const toggleFormType = (type: (typeof FORM_TYPES)[number]) => {
     const current = getValues('header.formTypes');
-    if (current.includes(type)) {
-      const next = current.filter((t) => t !== type);
-      setValue('header.formTypes', next, { shouldValidate: true });
-    } else {
-      const next = [...current, type];
-      setValue('header.formTypes', next, { shouldValidate: true });
-      if (type === 'Inspection' && !getValues('inspection')) {
-        setValue('inspection', createDefaultInspectionFormData(user?.name));
+
+    if (type === 'Inspection') {
+      if (current.includes('Inspection')) {
+        setValue('header.formTypes', ['Assessment'], { shouldValidate: true });
+      } else {
+        setValue('header.formTypes', ['Inspection'], { shouldValidate: true });
+        if (!getValues('inspection')) {
+          setValue('inspection', createDefaultInspectionFormData(user?.name));
+        }
       }
+      return;
+    }
+
+    const withoutInspection = current.filter((t) => t !== 'Inspection');
+    if (withoutInspection.includes(type)) {
+      const next = withoutInspection.filter((t) => t !== type);
+      setValue('header.formTypes', next.length ? next : ['Assessment'], { shouldValidate: true });
+    } else {
+      setValue('header.formTypes', [...withoutInspection, type], { shouldValidate: true });
     }
   };
 
@@ -168,6 +176,11 @@ export function DatasheetForm({
   };
 
   const onExportPdf = async () => {
+    if (isInspectionMode && getValues('inspection')) {
+      const { exportToPdf } = await import('@/inspection/utils/pdfExport');
+      await exportToPdf(getValues('inspection')!);
+      return;
+    }
     await exportDatasheetPdf(getValues(), serialNo || 'DRAFT');
   };
 
@@ -175,12 +188,12 @@ export function DatasheetForm({
     <form onSubmit={handleSubmit(onSubmit)}>
       <div
         className={
-          isInspectionOnly
+          isInspectionMode
             ? 'space-y-6'
             : 'lg:grid lg:grid-cols-[240px_minmax(0,1fr)] lg:items-start lg:gap-8'
         }
       >
-        {!isInspectionOnly && (
+        {!isInspectionMode && (
           <FormProgress activeSection={activeSection} onNavigate={navigateToSection} />
         )}
 
@@ -191,8 +204,12 @@ export function DatasheetForm({
       <FormSection
         id="header"
         number={1}
-        title="Header & Claim Details"
-        description="Form type, date, and primary claim information"
+        title={isInspectionMode ? 'Header' : 'Header & Claim Details'}
+        description={
+          isInspectionMode
+            ? 'Form type, date, and time'
+            : 'Form type, date, and primary claim information'
+        }
       >
         <div className="mb-6 grid gap-4 sm:grid-cols-2">
           <FormField label="Date" error={errors.header?.date?.message}>
@@ -220,7 +237,7 @@ export function DatasheetForm({
           </div>
         </FormField>
 
-        {!isInspectionOnly && (
+        {!isInspectionMode && (
           <>
         <FormField label="Documents Provided" className="mt-4">
           <textarea
@@ -279,7 +296,7 @@ export function DatasheetForm({
         />
       )}
 
-      {!isInspectionOnly && (
+      {!isInspectionMode && (
         <>
       <FormSection
         id="vehicle"
@@ -631,12 +648,12 @@ export function DatasheetForm({
           {status === 'draft' && (
             <button type="submit" className="btn-primary" disabled={isSubmitting}>
               <Send className="h-4 w-4" />
-              {isSubmitting ? 'Submitting…' : isInspectionOnly ? 'Submit Inspection' : 'Submit Datasheet'}
+              {isSubmitting ? 'Submitting…' : isInspectionMode ? 'Submit Inspection' : 'Submit Datasheet'}
             </button>
           )}
           <button type="button" onClick={onExportPdf} className="btn-secondary">
             <FileText className="h-4 w-4" />
-            {isInspectionOnly ? 'Export Datasheet PDF' : 'Export PDF'}
+            {isInspectionMode ? 'Export Inspection PDF' : 'Export PDF'}
           </button>
           <button
             type="button"

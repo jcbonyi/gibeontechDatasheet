@@ -98,12 +98,7 @@ const baseDatasheetSchema = z.object({
   inspection: inspectionFormSchema.optional(),
 });
 
-function isInspectionOnly(formTypes: string[]) {
-  return formTypes.length === 1 && formTypes[0] === 'Inspection';
-}
-
 export const datasheetFormSchema = baseDatasheetSchema.superRefine((data, ctx) => {
-  const inspectionOnly = isInspectionOnly(data.header.formTypes);
   const hasInspection = data.header.formTypes.includes('Inspection');
 
   if (hasInspection) {
@@ -118,7 +113,7 @@ export const datasheetFormSchema = baseDatasheetSchema.superRefine((data, ctx) =
     }
   }
 
-  if (inspectionOnly) return;
+  if (hasInspection) return;
 
   if (!data.basicInfo.clientInsurer.trim()) {
     ctx.addIssue({
