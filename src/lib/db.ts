@@ -136,13 +136,28 @@ async function initSupabase(): Promise<void> {
   console.log('[db] Connected to Supabase via REST API');
 }
 
+function missingSupabaseEnvVars(): string[] {
+  const missing: string[] = [];
+  if (!process.env.NEXT_PUBLIC_SUPABASE_URL?.trim()) missing.push('NEXT_PUBLIC_SUPABASE_URL');
+  if (!process.env.SUPABASE_SERVICE_ROLE_KEY?.trim()) missing.push('SUPABASE_SERVICE_ROLE_KEY');
+  return missing;
+}
+
+function dbConfigError(): string {
+  const missing = missingSupabaseEnvVars();
+  if (missing.length) {
+    return `Database not configured. Add ${missing.join(' and ')} to your Vercel project environment variables (Settings → Environment Variables), then redeploy.`;
+  }
+  return 'Database not configured. Set NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY, or provide DATABASE_URL.';
+}
+
 async function initPostgres(): Promise<void> {
   const useLocal = process.env.USE_LOCAL_DB === 'true';
 
   if (!useLocal) {
     try {
       await initSupabase();
-      return;
+      if (useSupabase) return;
     } catch (err) {
       if (!process.env.DATABASE_URL?.trim()) {
         throw err;
@@ -162,9 +177,7 @@ async function initPostgres(): Promise<void> {
       );
       return;
     }
-    throw new Error(
-      'Supabase is not configured. Set NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY in .env.local.',
-    );
+    throw new Error(dbConfigError());
   }
 
   pool = new Pool({
@@ -279,7 +292,7 @@ export async function query<T extends QueryResultRow = QueryResultRow>(
   }
 
   if (!pool) {
-    throw new Error('Database not initialized');
+    throw new Error(dbConfigError());
   }
   return pool.query<T>(text, params);
 }
@@ -731,7 +744,7 @@ export async function listDatasheets(filters: DatasheetListFilters): Promise<DbD
     return enrichDatasheetRows((data || []) as DbDatasheet[], users);
   }
 
-  if (!pool) throw new Error('Database not initialized');
+  if (!pool) throw new Error(dbConfigError());
 
   const params: unknown[] = [];
   const conditions: string[] = [];
@@ -812,7 +825,7 @@ export async function logDatasheetAudit(
     return;
   }
 
-  if (!pool) throw new Error('Database not initialized');
+  if (!pool) throw new Error(dbConfigError());
   await pool.query(
     `INSERT INTO datasheet_audit (datasheet_id, user_id, user_name, action, details)
      VALUES ($1, $2, $3, $4, $5)`,
@@ -841,7 +854,7 @@ export async function getDatasheetAuditLog(datasheetId: number): Promise<DbAudit
     return (data || []) as DbAuditEntry[];
   }
 
-  if (!pool) throw new Error('Database not initialized');
+  if (!pool) throw new Error(dbConfigError());
   const result = await pool.query<DbAuditEntry>(
     'SELECT * FROM datasheet_audit WHERE datasheet_id = $1 ORDER BY created_at DESC',
     [datasheetId],
@@ -894,7 +907,7 @@ export async function updateDatasheetRecord(
     return data as DbDatasheet;
   }
 
-  if (!pool) throw new Error('Database not initialized');
+  if (!pool) throw new Error(dbConfigError());
   const fields: string[] = [];
   const values: unknown[] = [];
   Object.entries({ ...patch, updated_at }).forEach(([key, value]) => {
@@ -947,7 +960,7 @@ export async function updateUserRecord(
     return data as Omit<DbUser, 'password_hash'>;
   }
 
-  if (!pool) throw new Error('Database not initialized');
+  if (!pool) throw new Error(dbConfigError());
   const fields: string[] = [];
   const values: unknown[] = [];
   Object.entries(patch).forEach(([key, value]) => {
