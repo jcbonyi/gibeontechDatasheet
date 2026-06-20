@@ -86,10 +86,22 @@ export function DatasheetForm({
   }, [initialData, reset]);
 
   useEffect(() => {
-    if (user?.name) {
+    if (isInspectionMode && !getValues('inspection')) {
+      setValue('inspection', createDefaultInspectionFormData(user?.name));
+    }
+  }, [getValues, isInspectionMode, setValue, user?.name]);
+
+  useEffect(() => {
+    if (isInspectionMode && user?.name) {
+      setValue('inspection.vehicleDetails.inspectorName', user.name);
+    }
+  }, [isInspectionMode, setValue, user?.name]);
+
+  useEffect(() => {
+    if (!isInspectionMode && user?.name) {
       setValue('signOff.seenBy', user.name);
     }
-  }, [user?.name, setValue]);
+  }, [isInspectionMode, user?.name, setValue]);
 
   const trackActiveSection = useCallback(() => {
     const offsets = FORM_SECTIONS.map((s) => {
@@ -185,7 +197,7 @@ export function DatasheetForm({
   };
 
   return (
-    <form onSubmit={handleSubmit(onSubmit)}>
+    <div>
       <div
         className={
           isInspectionMode
@@ -281,18 +293,12 @@ export function DatasheetForm({
       </FormSection>
 
       {isInspectionMode && (
-        <Controller
-          key={datasheetId ?? 'new-inspection'}
-          name="inspection"
+        <EmbeddedInspectionForm
           control={control}
-          render={({ field }) => (
-            <EmbeddedInspectionForm
-              value={field.value || createDefaultInspectionFormData(user?.name)}
-              onChange={field.onChange}
-              readOnly={readOnly}
-              defaultInspectorName={user?.name}
-            />
-          )}
+          register={register}
+          watch={watch}
+          errors={errors}
+          readOnly={readOnly}
         />
       )}
 
@@ -646,7 +652,7 @@ export function DatasheetForm({
             Save Draft
           </button>
           {status === 'draft' && (
-            <button type="submit" className="btn-primary" disabled={isSubmitting}>
+            <button type="button" onClick={handleSubmit(onSubmit)} className="btn-primary" disabled={isSubmitting}>
               <Send className="h-4 w-4" />
               {isSubmitting ? 'Submitting…' : isInspectionMode ? 'Submit Inspection' : 'Submit Datasheet'}
             </button>
@@ -683,6 +689,6 @@ export function DatasheetForm({
       )}
         </div>
       </div>
-    </form>
+    </div>
   );
 }

@@ -19,9 +19,12 @@ import type { DatasheetStatus } from '@/types/datasheet';
 
 function extractSearchFields(formData: Record<string, unknown>) {
   const basic = (formData.basicInfo || {}) as Record<string, string>;
+  const inspection = formData.inspection as
+    | { vehicleDetails?: { registrationNumber?: string } }
+    | undefined;
   return {
     claimNo: basic.claimNo || null,
-    regNo: basic.regNo || null,
+    regNo: basic.regNo || inspection?.vehicleDetails?.registrationNumber || null,
   };
 }
 

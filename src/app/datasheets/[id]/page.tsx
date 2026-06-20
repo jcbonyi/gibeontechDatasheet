@@ -27,6 +27,8 @@ interface AuditEntry {
   created_at: string;
 }
 
+import { fetchJson } from '@/lib/fetchJson';
+
 export default function EditDatasheetPage() {
   const params = useParams();
   const router = useRouter();
@@ -43,10 +45,14 @@ export default function EditDatasheetPage() {
   const [actionMessage, setActionMessage] = useState('');
 
   const reload = () => {
-    fetch(`/api/datasheets/${id}`)
-      .then(async (res) => {
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.message || 'Failed to load');
+    fetchJson<{
+      message?: string;
+      datasheet: { form_data: DatasheetFormData; serial_no: string; status: DatasheetStatus; assigned_to_name?: string | null };
+      permissions: DatasheetPermissions;
+      audit: AuditEntry[];
+    }>(`/api/datasheets/${id}`)
+      .then(({ ok, data }) => {
+        if (!ok) throw new Error(data.message || 'Failed to load');
         const loaded = mergeFormData(data.datasheet.form_data as DatasheetFormData);
         if (user?.name) loaded.signOff.seenBy = user.name;
         setFormData(loaded);
@@ -65,13 +71,15 @@ export default function EditDatasheetPage() {
   }, [id, user?.name]);
 
   const handleSave = async (data: DatasheetFormData, newStatus: DatasheetStatus) => {
-    const res = await fetch(`/api/datasheets/${id}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ formData: data, status: newStatus }),
-    });
-    const result = await res.json();
-    if (!res.ok) throw new Error(result.message || 'Failed to save');
+    const { ok, data: result } = await fetchJson<{ message?: string; datasheet: { status: DatasheetStatus } }>(
+      `/api/datasheets/${id}`,
+      {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ formData: data, status: newStatus }),
+      },
+    );
+    if (!ok) throw new Error(result.message || 'Failed to save');
     setStatus(result.datasheet.status);
     reload();
   };

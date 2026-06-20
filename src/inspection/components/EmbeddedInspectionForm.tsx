@@ -1,13 +1,16 @@
 'use client';
 
-import { useEffect, useState, useCallback, useRef } from 'react';
-import { useForm, Controller, Resolver } from 'react-hook-form';
-import { zodResolver } from '@hookform/resolvers/zod';
-import { FileText, ShieldCheck, AlertCircle } from 'lucide-react';
-import { inspectionFormSchema } from '../schemas/inspectionSchema';
+import { useEffect, useState, useCallback } from 'react';
 import {
-  createDefaultFormData,
-  InspectionFormData,
+  Control,
+  Controller,
+  FieldErrors,
+  UseFormRegister,
+  UseFormWatch,
+} from 'react-hook-form';
+import { FileText, ShieldCheck, AlertCircle } from 'lucide-react';
+import { DatasheetFormData } from '@/types/datasheet';
+import {
   COACHWORK_ITEMS,
   BODY_ITEMS,
   PHOTO_GROUPS,
@@ -15,9 +18,11 @@ import {
   BODY_DAMAGE_LABELS,
   CONDITION_RATINGS,
   FORM_SECTIONS,
+  InspectionFormData,
   SystemsTab,
   ExteriorTab,
 } from '../types/inspection';
+import { inspectionPath } from '../utils/formPaths';
 import { FormSection } from './FormSection';
 import { FormField } from './FormField';
 import { ConditionRatingTable } from './ConditionRatingTable';
@@ -30,58 +35,29 @@ import { YesNoToggle } from './YesNoToggle';
 import { FormProgress } from './FormProgress';
 
 interface EmbeddedInspectionFormProps {
-  value?: InspectionFormData;
-  onChange: (data: InspectionFormData) => void;
+  control: Control<DatasheetFormData>;
+  register: UseFormRegister<DatasheetFormData>;
+  watch: UseFormWatch<DatasheetFormData>;
+  errors: FieldErrors<DatasheetFormData>;
   readOnly?: boolean;
-  defaultInspectorName?: string;
 }
 
 export function EmbeddedInspectionForm({
-  value,
-  onChange,
+  control,
+  register,
+  watch,
+  errors,
   readOnly,
-  defaultInspectorName = '',
 }: EmbeddedInspectionFormProps) {
   const [showReport, setShowReport] = useState(false);
   const [activeSystemsTab, setActiveSystemsTab] = useState<SystemsTab>('mechanical');
   const [activeExteriorTab, setActiveExteriorTab] = useState<ExteriorTab>('interior');
   const [activeSection, setActiveSection] = useState('vehicle');
 
-  const {
-    register,
-    control,
-    reset,
-    watch,
-    formState: { errors },
-  } = useForm<InspectionFormData>({
-    resolver: zodResolver(inspectionFormSchema) as Resolver<InspectionFormData>,
-    defaultValues: value || createDefaultFormData(),
-    shouldUnregister: false,
-  });
-
-  const initialized = useRef(false);
-
-  useEffect(() => {
-    if (initialized.current) return;
-    const defaults = value || createDefaultFormData();
-    if (defaultInspectorName && !defaults.vehicleDetails.inspectorName) {
-      defaults.vehicleDetails.inspectorName = defaultInspectorName;
-    }
-    reset(defaults);
-    initialized.current = true;
-  }, [value, defaultInspectorName, reset]);
-
-  useEffect(() => {
-    if (!initialized.current) return;
-    const subscription = watch((data) => {
-      onChange(data as InspectionFormData);
-    });
-    return () => subscription.unsubscribe();
-  }, [watch, onChange]);
-
-  const inspectorName = watch('vehicleDetails.inspectorName');
-  const ownerName = watch('vehicleDetails.ownerName');
-  const formData = watch();
+  const inspectionErrors = errors.inspection;
+  const inspectionData = watch('inspection') as InspectionFormData | undefined;
+  const inspectorName = watch('inspection.vehicleDetails.inspectorName');
+  const ownerName = watch('inspection.vehicleDetails.ownerName');
 
   const trackActiveSection = useCallback(() => {
     const offsets = FORM_SECTIONS.map((s) => {
@@ -105,11 +81,12 @@ export function EmbeddedInspectionForm({
   };
 
   const handleExportPdf = async () => {
+    if (!inspectionData) return;
     const { exportToPdf } = await import('../utils/pdfExport');
-    await exportToPdf(formData as InspectionFormData);
+    await exportToPdf(inspectionData);
   };
 
-  if (showReport) {
+  if (showReport && inspectionData) {
     return (
       <div>
         <div className="no-print mb-4 flex flex-wrap gap-2">
@@ -121,7 +98,7 @@ export function EmbeddedInspectionForm({
             Download Inspection PDF
           </button>
         </div>
-        <InspectionReport data={formData as InspectionFormData} />
+        <InspectionReport data={inspectionData} />
       </div>
     );
   }
@@ -172,7 +149,7 @@ export function EmbeddedInspectionForm({
                 <ConditionRatingTable items={group.items} sectionKey={group.dataKey} register={register} />
                 <FormField label={`${group.label} Remarks`} className="mt-5">
                   <textarea
-                    {...register(group.remarksKey)}
+                    {...register(inspectionPath(group.remarksKey))}
                     rows={3}
                     className="form-input resize-y"
                     placeholder={`Additional ${group.label.toLowerCase()} observations...`}
@@ -200,20 +177,24 @@ export function EmbeddedInspectionForm({
             <TabPanel id="interior" activeTab={activeExteriorTab}>
               <ConditionRatingTable items={COACHWORK_ITEMS} sectionKey="coachwork" register={register} />
               <FormField label="Interior Remarks" className="mt-5">
-                <textarea {...register('coachworkRemarks')} rows={3} className="form-input resize-y" />
+                <textarea {...register(inspectionPath('coachworkRemarks'))} rows={3} className="form-input resize-y" />
               </FormField>
             </TabPanel>
             <TabPanel id="exterior" activeTab={activeExteriorTab}>
               <ConditionRatingTable items={BODY_ITEMS} sectionKey="bodyCondition" register={register} />
               <FormField label="Body Remarks" className="mt-5">
-                <textarea {...register('bodyRemarks')} rows={3} className="form-input resize-y" />
+                <textarea {...register(inspectionPath('bodyRemarks'))} rows={3} className="form-input resize-y" />
               </FormField>
             </TabPanel>
             <TabPanel id="damage" activeTab={activeExteriorTab}>
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 {(Object.keys(BODY_DAMAGE_LABELS) as (keyof typeof BODY_DAMAGE_LABELS)[]).map((field) => (
                   <FormField key={field} label={BODY_DAMAGE_LABELS[field]}>
-                    <input type="text" {...register(`bodyDamage.${field}`)} className="form-input" />
+                    <input
+                      type="text"
+                      {...register(inspectionPath(`bodyDamage.${field}`))}
+                      className="form-input"
+                    />
                   </FormField>
                 ))}
               </div>
@@ -237,15 +218,15 @@ export function EmbeddedInspectionForm({
                     {group.fields.map(({ key, label, required }) => (
                       <Controller
                         key={key}
-                        name={`photos.${key}`}
+                        name={inspectionPath(`photos.${key}`)}
                         control={control}
                         render={({ field }) => (
                           <PhotoUpload
                             label={label}
                             required={required}
-                            value={field.value}
+                            value={String(field.value || '')}
                             onChange={field.onChange}
-                            error={errors.photos?.[key]?.message}
+                            error={inspectionErrors?.photos?.[key]?.message}
                           />
                         )}
                       />
@@ -268,39 +249,60 @@ export function EmbeddedInspectionForm({
                 <h3 className="font-semibold">Overall Assessment</h3>
               </div>
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <FormField label="Overall Condition Rating" required error={errors.generalCondition?.rating?.message}>
-                  <select {...register('generalCondition.rating')} className="form-input">
+                <FormField label="Overall Condition Rating" required error={inspectionErrors?.generalCondition?.rating?.message}>
+                  <select {...register(inspectionPath('generalCondition.rating'))} className="form-input">
                     {CONDITION_RATINGS.map((r) => (
                       <option key={r.value} value={r.value}>{r.label}</option>
                     ))}
                   </select>
                 </FormField>
                 <FormField label="General Comments" className="sm:col-span-2">
-                  <textarea {...register('generalCondition.comments')} rows={3} className="form-input resize-y" />
+                  <textarea {...register(inspectionPath('generalCondition.comments'))} rows={3} className="form-input resize-y" />
                 </FormField>
               </div>
             </div>
             <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
-              <FormField label="Roadworthy" required error={errors.findings?.roadworthy?.message}>
-                <Controller name="findings.roadworthy" control={control} render={({ field }) => (
-                  <YesNoToggle value={field.value} onChange={field.onChange} />
-                )} />
+              <FormField label="Roadworthy" required error={inspectionErrors?.findings?.roadworthy?.message}>
+                <Controller
+                  name={inspectionPath('findings.roadworthy')}
+                  control={control}
+                  render={({ field }) => (
+                    <YesNoToggle
+                      value={(field.value as 'yes' | 'no' | '') || ''}
+                      onChange={field.onChange}
+                    />
+                  )}
+                />
               </FormField>
-              <FormField label="Pre-existing Damage Noted" required error={errors.findings?.preExistingDamage?.message}>
-                <Controller name="findings.preExistingDamage" control={control} render={({ field }) => (
-                  <YesNoToggle value={field.value} onChange={field.onChange} />
-                )} />
+              <FormField label="Pre-existing Damage Noted" required error={inspectionErrors?.findings?.preExistingDamage?.message}>
+                <Controller
+                  name={inspectionPath('findings.preExistingDamage')}
+                  control={control}
+                  render={({ field }) => (
+                    <YesNoToggle
+                      value={(field.value as 'yes' | 'no' | '') || ''}
+                      onChange={field.onChange}
+                    />
+                  )}
+                />
               </FormField>
-              <FormField label="Repairs Recommended" required error={errors.findings?.repairsRecommended?.message}>
-                <Controller name="findings.repairsRecommended" control={control} render={({ field }) => (
-                  <YesNoToggle value={field.value} onChange={field.onChange} />
-                )} />
+              <FormField label="Repairs Recommended" required error={inspectionErrors?.findings?.repairsRecommended?.message}>
+                <Controller
+                  name={inspectionPath('findings.repairsRecommended')}
+                  control={control}
+                  render={({ field }) => (
+                    <YesNoToggle
+                      value={(field.value as 'yes' | 'no' | '') || ''}
+                      onChange={field.onChange}
+                    />
+                  )}
+                />
               </FormField>
               <FormField label="Estimated Repair Cost">
-                <input type="text" {...register('findings.estimatedRepairCost')} className="form-input" />
+                <input type="text" {...register(inspectionPath('findings.estimatedRepairCost'))} className="form-input" />
               </FormField>
               <FormField label="Additional Observations" className="sm:col-span-2 lg:col-span-3">
-                <textarea {...register('findings.additionalObservations')} rows={4} className="form-input resize-y" />
+                <textarea {...register(inspectionPath('findings.additionalObservations'))} rows={4} className="form-input resize-y" />
               </FormField>
             </div>
           </FormSection>
@@ -314,28 +316,28 @@ export function EmbeddedInspectionForm({
             <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
               <div className="rounded-xl border border-slate-200 p-5">
                 <h3 className="mb-1 text-sm font-semibold text-slate-800">Inspector</h3>
-                <p className="mb-4 text-sm text-slate-500">{inspectorName || defaultInspectorName || '—'}</p>
-                <FormField label="Signature" required error={errors.declaration?.inspectorSignature?.message}>
-                  <input type="text" {...register('declaration.inspectorSignature')} className="form-input font-serif italic" />
+                <p className="mb-4 text-sm text-slate-500">{inspectorName || '—'}</p>
+                <FormField label="Signature" required error={inspectionErrors?.declaration?.inspectorSignature?.message}>
+                  <input type="text" {...register(inspectionPath('declaration.inspectorSignature'))} className="form-input font-serif italic" />
                 </FormField>
-                <FormField label="Date" required error={errors.declaration?.inspectorDate?.message} className="mt-4">
-                  <input type="date" {...register('declaration.inspectorDate')} className="form-input" />
+                <FormField label="Date" required error={inspectionErrors?.declaration?.inspectorDate?.message} className="mt-4">
+                  <input type="date" {...register(inspectionPath('declaration.inspectorDate'))} className="form-input" />
                 </FormField>
               </div>
               <div className="rounded-xl border border-slate-200 p-5">
                 <h3 className="mb-1 text-sm font-semibold text-slate-800">Owner / Representative</h3>
                 <p className="mb-4 text-sm text-slate-500">{ownerName || '—'}</p>
-                <FormField label="Signature" required error={errors.declaration?.ownerSignature?.message}>
-                  <input type="text" {...register('declaration.ownerSignature')} className="form-input font-serif italic" />
+                <FormField label="Signature" required error={inspectionErrors?.declaration?.ownerSignature?.message}>
+                  <input type="text" {...register(inspectionPath('declaration.ownerSignature'))} className="form-input font-serif italic" />
                 </FormField>
-                <FormField label="Date" required error={errors.declaration?.ownerDate?.message} className="mt-4">
-                  <input type="date" {...register('declaration.ownerDate')} className="form-input" />
+                <FormField label="Date" required error={inspectionErrors?.declaration?.ownerDate?.message} className="mt-4">
+                  <input type="date" {...register(inspectionPath('declaration.ownerDate'))} className="form-input" />
                 </FormField>
               </div>
             </div>
           </FormSection>
 
-          {Object.keys(errors).length > 0 && (
+          {inspectionErrors && Object.keys(inspectionErrors).length > 0 && (
             <div className="flex items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
               <AlertCircle className="h-4 w-4 shrink-0" />
               Some inspection fields need attention before submit.

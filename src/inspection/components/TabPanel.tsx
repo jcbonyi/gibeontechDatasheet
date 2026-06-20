@@ -7,8 +7,10 @@ interface TabPanelProps {
 }
 
 export function TabPanel({ id, activeTab, children }: TabPanelProps) {
+  if (activeTab !== id) return null;
+
   return (
-    <div id={id} role="tabpanel" hidden={activeTab !== id} className={activeTab !== id ? 'hidden' : undefined}>
+    <div id={id} role="tabpanel">
       {children}
     </div>
   );

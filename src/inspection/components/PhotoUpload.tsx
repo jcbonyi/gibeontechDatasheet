@@ -1,7 +1,8 @@
 'use client';
 
-import { useRef } from 'react';
+import { useRef, useState } from 'react';
 import { Camera, ImagePlus, X } from 'lucide-react';
+import { compressImageDataUrl } from '../utils/compressImage';
 
 interface PhotoUploadProps {
   label: string;
@@ -13,12 +14,19 @@ interface PhotoUploadProps {
 
 export function PhotoUpload({ label, required, value, onChange, error }: PhotoUploadProps) {
   const inputRef = useRef<HTMLInputElement>(null);
+  const [uploading, setUploading] = useState(false);
 
-  const handleFile = (file: File) => {
+  const handleFile = async (file: File) => {
     if (!file.type.startsWith('image/')) return;
-    const reader = new FileReader();
-    reader.onload = () => onChange(reader.result as string);
-    reader.readAsDataURL(file);
+    setUploading(true);
+    try {
+      const compressed = await compressImageDataUrl(file);
+      onChange(compressed);
+    } catch {
+      onChange('');
+    } finally {
+      setUploading(false);
+    }
   };
 
   const handleDrop = (e: React.DragEvent) => {
@@ -64,8 +72,10 @@ export function PhotoUpload({ label, required, value, onChange, error }: PhotoUp
           <div className="mb-2 flex h-12 w-12 items-center justify-center rounded-full bg-white shadow-sm">
             <ImagePlus className="h-6 w-6 text-brand-500" />
           </div>
-          <p className="text-sm font-medium text-slate-700">Drop image or click to upload</p>
-          <p className="mt-1 text-xs text-slate-400">PNG, JPG · Max 10MB</p>
+          <p className="text-sm font-medium text-slate-700">
+            {uploading ? 'Processing image…' : 'Drop image or click to upload'}
+          </p>
+          <p className="mt-1 text-xs text-slate-400">PNG, JPG · Compressed automatically</p>
         </div>
       )}
 

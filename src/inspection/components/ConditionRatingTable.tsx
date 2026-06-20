@@ -1,11 +1,12 @@
-import { UseFormRegister, Path } from 'react-hook-form';
-import { InspectionFormData } from '../types/inspection';
+import { UseFormRegister } from 'react-hook-form';
+import { DatasheetFormData } from '@/types/datasheet';
 import { CONDITION_RATINGS, ConditionRating } from '../types/inspection';
+import { inspectionItemPath } from '../utils/formPaths';
 
 interface ConditionRatingTableProps {
   items: readonly string[];
   sectionKey: 'mechanical' | 'electrical' | 'technical' | 'coachwork' | 'bodyCondition';
-  register: UseFormRegister<InspectionFormData>;
+  register: UseFormRegister<DatasheetFormData>;
 }
 
 const ratingSelectClass: Record<string, string> = {
@@ -35,8 +36,8 @@ export function ConditionRatingTable({
           </thead>
           <tbody className="divide-y divide-slate-100 bg-white">
             {items.map((item, index) => {
-              const ratingPath = `${sectionKey}.${item}.rating` as Path<InspectionFormData>;
-              const remarksPath = `${sectionKey}.${item}.remarks` as Path<InspectionFormData>;
+              const ratingPath = inspectionItemPath(sectionKey, item, 'rating');
+              const remarksPath = inspectionItemPath(sectionKey, item, 'remarks');
 
               return (
                 <tr key={item} className={index % 2 === 0 ? 'bg-white' : 'bg-slate-50/70'}>
@@ -70,8 +71,8 @@ export function ConditionRatingTable({
 
       <div className="space-y-3 md:hidden">
         {items.map((item) => {
-          const ratingPath = `${sectionKey}.${item}.rating` as Path<InspectionFormData>;
-          const remarksPath = `${sectionKey}.${item}.remarks` as Path<InspectionFormData>;
+          const ratingPath = inspectionItemPath(sectionKey, item, 'rating');
+          const remarksPath = inspectionItemPath(sectionKey, item, 'remarks');
 
           return (
             <div key={item} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">

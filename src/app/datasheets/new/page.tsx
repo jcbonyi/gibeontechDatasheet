@@ -8,6 +8,8 @@ import { PageHeader } from '@/components/PageHeader';
 import { createDefaultFormData, DatasheetFormData, type DatasheetStatus } from '@/types/datasheet';
 import { useAuth } from '@/context/AuthContext';
 
+import { fetchJson } from '@/lib/fetchJson';
+
 export default function NewDatasheetPage() {
   const router = useRouter();
   const { user } = useAuth();
@@ -15,13 +17,15 @@ export default function NewDatasheetPage() {
   const initialData = createDefaultFormData(user?.name);
 
   const handleSave = async (formData: DatasheetFormData, status: DatasheetStatus) => {
-    const res = await fetch('/api/datasheets', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ formData, status }),
-    });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.message || 'Failed to save');
+    const { ok, data } = await fetchJson<{ message?: string; datasheet: { id: number } }>(
+      '/api/datasheets',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ formData, status }),
+      },
+    );
+    if (!ok) throw new Error(data.message || 'Failed to save');
     router.replace(`/datasheets/${data.datasheet.id}`);
   };
 

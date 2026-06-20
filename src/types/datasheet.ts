@@ -341,7 +341,28 @@ export function mergeFormData(
       },
     },
     documents: { ...defaults.documents, ...loaded.documents },
-    inspection: loaded.inspection ?? defaults.inspection,
+    inspection: loaded.inspection
+      ? {
+          ...createDefaultInspectionFormData(),
+          ...loaded.inspection,
+          vehicleDetails: {
+            ...createDefaultInspectionFormData().vehicleDetails,
+            ...loaded.inspection.vehicleDetails,
+          },
+          photos: {
+            ...createDefaultInspectionFormData().photos,
+            ...loaded.inspection.photos,
+          },
+          findings: {
+            ...createDefaultInspectionFormData().findings,
+            ...loaded.inspection.findings,
+          },
+          declaration: {
+            ...createDefaultInspectionFormData().declaration,
+            ...loaded.inspection.declaration,
+          },
+        }
+      : defaults.inspection,
     remarks: loaded.remarks ?? legacyRemarks ?? defaults.remarks,
   };
 }
