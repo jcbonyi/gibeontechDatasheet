@@ -74,6 +74,7 @@ export function DatasheetForm({
   } = useForm<DatasheetFormData>({
     resolver: zodResolver(datasheetFormSchema) as Resolver<DatasheetFormData>,
     defaultValues: initialData || createDefaultFormData(),
+    shouldUnregister: false,
   });
 
   const documents = watch('documents');
@@ -87,7 +88,7 @@ export function DatasheetForm({
 
   useEffect(() => {
     if (isInspectionMode && !getValues('inspection')) {
-      setValue('inspection', createDefaultInspectionFormData(user?.name));
+      setValue('inspection', createDefaultInspectionFormData(user?.name), { shouldDirty: false });
     }
   }, [getValues, isInspectionMode, setValue, user?.name]);
 

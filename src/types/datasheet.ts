@@ -122,8 +122,16 @@ export interface VehicleDiagramMark {
   zone?: string;
 }
 
-import type { InspectionFormData } from '@/inspection/types/inspection';
-import { createDefaultFormData as createDefaultInspectionData } from '@/inspection/types/inspection';
+import {
+  MECHANICAL_ITEMS,
+  ELECTRICAL_ITEMS,
+  TECHNICAL_ITEMS,
+  COACHWORK_ITEMS,
+  BODY_ITEMS,
+  normalizeInspectionSection,
+  createDefaultFormData as createDefaultInspectionData,
+  type InspectionFormData,
+} from '@/inspection/types/inspection';
 
 export interface DatasheetFormData {
   header: {
@@ -301,6 +309,17 @@ export function createDefaultInspectionFormData(inspectorName = ''): InspectionF
   return data;
 }
 
+function normalizeInspectionData(inspection: InspectionFormData): InspectionFormData {
+  return {
+    ...inspection,
+    mechanical: normalizeInspectionSection(MECHANICAL_ITEMS, inspection.mechanical),
+    electrical: normalizeInspectionSection(ELECTRICAL_ITEMS, inspection.electrical),
+    technical: normalizeInspectionSection(TECHNICAL_ITEMS, inspection.technical),
+    coachwork: normalizeInspectionSection(COACHWORK_ITEMS, inspection.coachwork),
+    bodyCondition: normalizeInspectionSection(BODY_ITEMS, inspection.bodyCondition),
+  };
+}
+
 export function isInspectionOnlyForm(formTypes: FormType[]): boolean {
   return formTypes.length === 1 && formTypes[0] === 'Inspection';
 }
@@ -342,7 +361,7 @@ export function mergeFormData(
     },
     documents: { ...defaults.documents, ...loaded.documents },
     inspection: loaded.inspection
-      ? {
+      ? normalizeInspectionData({
           ...createDefaultInspectionFormData(),
           ...loaded.inspection,
           vehicleDetails: {
@@ -361,7 +380,7 @@ export function mergeFormData(
             ...createDefaultInspectionFormData().declaration,
             ...loaded.inspection.declaration,
           },
-        }
+        })
       : defaults.inspection,
     remarks: loaded.remarks ?? legacyRemarks ?? defaults.remarks,
   };

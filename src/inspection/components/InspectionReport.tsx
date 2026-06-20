@@ -7,6 +7,7 @@ import {
   BODY_DAMAGE_LABELS,
   InspectionItem,
   ConditionRating,
+  getInspectionItem,
 } from '../types/inspection';
 import { CheckCircle2, XCircle, ShieldAlert } from 'lucide-react';
 import { Letterhead, LetterheadFooter } from './Letterhead';
@@ -38,7 +39,7 @@ function ReportTable({
   sectionData: Record<string, InspectionItem>;
   remarks?: string;
 }) {
-  const ratedItems = items.filter((item) => sectionData[item]?.rating);
+  const ratedItems = items.filter((item) => getInspectionItem(sectionData, item)?.rating);
   if (ratedItems.length === 0 && !remarks) return null;
 
   return (
@@ -54,7 +55,7 @@ function ReportTable({
         </thead>
         <tbody>
           {items.map((item) => {
-            const entry = sectionData[item];
+            const entry = getInspectionItem(sectionData, item);
             return (
               <tr key={item}>
                 <td>{item}</td>

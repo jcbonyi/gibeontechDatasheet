@@ -8,6 +8,7 @@ import {
   PHOTO_FIELDS,
   BODY_DAMAGE_LABELS,
   formatRating,
+  getInspectionItem,
   ConditionRating,
 } from '../types/inspection';
 import { COMPANY, LOGO_MARK_PATH } from '../constants/brand';
@@ -154,7 +155,7 @@ function addInspectionTable(
   let y = addSectionTitle(pdf, title, startY);
 
   const body = items.map((item) => {
-    const entry = sectionData[item];
+    const entry = getInspectionItem(sectionData, item);
     return [item, formatRating(entry?.rating ?? ''), entry?.remarks || '—'];
   });
 
@@ -173,7 +174,9 @@ function addInspectionTable(
     },
     didParseCell: (data) => {
       if (data.section === 'body' && data.column.index === 1) {
-        const rating = items[data.row.index] ? sectionData[items[data.row.index]]?.rating : '';
+        const rating = items[data.row.index]
+          ? getInspectionItem(sectionData, items[data.row.index])?.rating
+          : '';
         const [r, g, b] = ratingColor(rating ?? '');
         data.cell.styles.textColor = [r, g, b];
         data.cell.styles.fontStyle = rating ? 'bold' : 'normal';

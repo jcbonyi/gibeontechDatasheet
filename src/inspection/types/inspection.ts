@@ -267,7 +267,29 @@ export const VEHICLE_USAGE_OPTIONS = [
 ];
 
 function createInspectionItems(items: readonly string[]): Record<string, InspectionItem> {
-  return Object.fromEntries(items.map((item) => [item, { rating: '', remarks: '' }]));
+  return Object.fromEntries(items.map((item) => [itemKey(item), { rating: '', remarks: '' }]));
+}
+
+/** Resolve item data whether stored under slug key or legacy display-name key. */
+export function getInspectionItem(
+  sectionData: Record<string, InspectionItem> | undefined,
+  itemLabel: string,
+): InspectionItem | undefined {
+  if (!sectionData) return undefined;
+  return sectionData[itemKey(itemLabel)] ?? sectionData[itemLabel];
+}
+
+export function normalizeInspectionSection(
+  items: readonly string[],
+  loaded: Record<string, InspectionItem> | undefined,
+): Record<string, InspectionItem> {
+  const normalized = createInspectionItems(items);
+  if (!loaded) return normalized;
+  for (const item of items) {
+    const key = itemKey(item);
+    normalized[key] = loaded[key] ?? loaded[item] ?? normalized[key];
+  }
+  return normalized;
 }
 
 export function createDefaultFormData(): InspectionFormData {
