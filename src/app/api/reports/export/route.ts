@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { listDatasheets } from '@/lib/db';
+import { listAllAuditsForDatasheets, listDatasheets } from '@/lib/db';
 import { getAuthUser, unauthorized } from '@/lib/api';
 import { handleRouteError } from '@/lib/routeErrors';
 import { canViewAllDatasheets } from '@/lib/permissions';
@@ -18,6 +18,8 @@ function parseFilters(req: NextRequest, userId: number, viewAll: boolean) {
       : undefined,
     fromDate: searchParams.get('fromDate') || undefined,
     toDate: searchParams.get('toDate') || undefined,
+    insurer: searchParams.get('insurer') || undefined,
+    q: searchParams.get('q') || undefined,
     format: (searchParams.get('format') || 'xlsx').toLowerCase(),
     pack: (searchParams.get('pack') || 'register').toLowerCase(),
     viewAll,
@@ -32,10 +34,11 @@ export async function GET(req: NextRequest) {
 
     const filters = parseFilters(req, user.id, canViewAllDatasheets(user.role));
     const rows = (await listDatasheets(filters)).map(toListItem);
+    const audits = await listAllAuditsForDatasheets(rows.map((r) => r.id));
     const dateStamp = new Date().toISOString().slice(0, 10);
 
     if (filters.format === 'pdf' || filters.pack === 'analytics-pdf') {
-      const summary = buildAnalyticsSummary(rows);
+      const summary = buildAnalyticsSummary(rows, audits);
       const buffer = analyticsReportToBuffer(summary, {
         fromDate: filters.fromDate,
         toDate: filters.toDate,
@@ -92,7 +95,7 @@ export async function GET(req: NextRequest) {
       });
     }
 
-    const summary = buildAnalyticsSummary(rows);
+    const summary = buildAnalyticsSummary(rows, audits);
     const buffer =
       filters.pack === 'ops'
         ? await buildOpsWorkbook(rows, summary)

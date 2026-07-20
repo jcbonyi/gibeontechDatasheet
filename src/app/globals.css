@@ -171,4 +171,10 @@
 @media print {
   .no-print { display: none !important; }
   body { background: white !important; }
+  .print-sheet {
+    box-shadow: none !important;
+    border: none !important;
+    padding: 0 !important;
+  }
+  .print\:inline { display: inline !important; }
 }

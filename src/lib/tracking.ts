@@ -26,7 +26,10 @@ export interface TrackingFields {
 }
 
 export interface DatasheetListItem
-  extends Omit<DbDatasheetListRow, 'form_data'>,
+  extends Omit<
+      DbDatasheetListRow,
+      'form_data' | 'form_types' | 'client_insurer' | 'date_of_instruction'
+    >,
     TrackingFields {}
 
 export interface CycleTimeMetrics {
@@ -289,7 +292,7 @@ export function buildAnalyticsSummary(
     byInsurerMap.set(insurer, ins);
 
     const types = row.form_types.length ? row.form_types : ['Unknown'];
-    types.forEach((t) => byFormTypeMap.set(t, (byFormTypeMap.get(t) || 0) + 1));
+    types.forEach((t: string) => byFormTypeMap.set(t, (byFormTypeMap.get(t) || 0) + 1));
 
     const month = row.created_at.slice(0, 7);
     const vol = volumeMap.get(month) || { created: 0, approved: 0 };
@@ -308,9 +311,9 @@ export function buildAnalyticsSummary(
       claim_no: r.claim_no,
       reg_no: r.reg_no,
       status: r.status,
-      client_insurer: r.client_insurer,
+      client_insurer: r.client_insurer ?? null,
       assigned_to_name: r.assigned_to_name || null,
-      date_of_instruction: r.date_of_instruction,
+      date_of_instruction: r.date_of_instruction ?? null,
       age_days: r.age_days,
       age_band: r.age_band,
     }));

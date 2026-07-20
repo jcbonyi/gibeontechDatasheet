@@ -46,6 +46,14 @@ export async function POST(
           assigned_by: null,
           assigned_at: null,
           reopen_reason: null,
+          date_of_instruction: source.date_of_instruction ?? null,
+          client_insurer: source.client_insurer ?? null,
+          form_types: source.form_types ?? null,
+          cancel_reason: null,
+          query_reason: null,
+          reviewed_by: null,
+          reviewed_at: null,
+          search_text: source.search_text ?? null,
         });
         break;
       } catch (err) {

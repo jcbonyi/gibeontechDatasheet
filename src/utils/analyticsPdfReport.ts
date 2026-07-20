@@ -56,7 +56,14 @@ export function buildAnalyticsReportDoc(
       ['Open (not approved)', String(summary.kpis.open)],
       [`Overdue (>${SLA_DAYS} days)`, String(summary.kpis.overdue)],
       ['Avg open age (days)', summary.kpis.avgAgeDays != null ? String(summary.kpis.avgAgeDays) : '—'],
+      ['SLA compliance %', summary.kpis.slaCompliancePct != null ? String(summary.kpis.slaCompliancePct) : '—'],
       ['Approved (in filter)', String(summary.kpis.approvedInPeriod)],
+      [
+        'Avg Instructed→Issued (days)',
+        summary.cycleTime?.avgInstructedToIssuedDays != null
+          ? String(summary.cycleTime.avgInstructedToIssuedDays)
+          : '—',
+      ],
     ],
     styles: { fontSize: 8, cellPadding: 2 },
     headStyles: { fillColor: [BRAND.r, BRAND.g, BRAND.b] },
