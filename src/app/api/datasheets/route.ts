@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import {
   allocateNextSerialNo,
-  getDatasheetById,
   insertDatasheetRecord,
   isDuplicateSerialError,
   listDatasheets,
@@ -12,6 +11,7 @@ import { getAuthUser, unauthorized } from '@/lib/api';
 import { handleRouteError } from '@/lib/routeErrors';
 import { canViewAllDatasheets } from '@/lib/permissions';
 import { createDefaultFormData, type DatasheetStatus } from '@/types/datasheet';
+import { toListItem } from '@/lib/tracking';
 
 function extractSearchFields(formData: Record<string, unknown>) {
   const basic = (formData.basicInfo || {}) as Record<string, string>;
@@ -43,7 +43,9 @@ export async function GET(req: NextRequest) {
       scopeUserId: canViewAllDatasheets(user.role) ? undefined : user.id,
     });
 
-    return NextResponse.json({ datasheets });
+    return NextResponse.json({
+      datasheets: datasheets.map(toListItem),
+    });
   } catch (err) {
     return handleRouteError(err, 'GET /api/datasheets');
   }

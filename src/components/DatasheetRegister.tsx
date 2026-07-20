@@ -2,13 +2,21 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { Download, FileText, Plus, Search, UserPlus } from 'lucide-react';
+import {
+  Download,
+  FileSpreadsheet,
+  FileText,
+  Plus,
+  Search,
+  UserPlus,
+} from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import {
   canAssignDatasheet,
   canViewAllDatasheets,
 } from '@/lib/permissions';
 import { DATASHEET_STATUSES, ROLE_LABELS, type DatasheetStatus } from '@/types/datasheet';
+import { SLA_DAYS, type AgeBand } from '@/lib/tracking';
 
 interface DatasheetRow {
   id: number;
@@ -20,6 +28,11 @@ interface DatasheetRow {
   assigned_to_name?: string | null;
   created_at: string;
   updated_at: string;
+  date_of_instruction: string | null;
+  age_days: number | null;
+  age_band: AgeBand;
+  is_overdue: boolean;
+  client_insurer: string | null;
 }
 
 interface AssessorOption {
@@ -47,8 +60,7 @@ export function DatasheetRegister() {
   const canAssign = user ? canAssignDatasheet(user) : false;
   const viewAll = user ? canViewAllDatasheets(user.role) : false;
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const filterParams = useCallback(() => {
     const params = new URLSearchParams();
     if (claimNo) params.set('claimNo', claimNo);
     if (regNo) params.set('regNo', regNo);
@@ -56,12 +68,17 @@ export function DatasheetRegister() {
     if (assessorId) params.set('assessorId', assessorId);
     if (fromDate) params.set('fromDate', fromDate);
     if (toDate) params.set('toDate', toDate);
+    return params;
+  }, [assessorId, claimNo, fromDate, regNo, status, toDate]);
 
+  const load = useCallback(async () => {
+    setLoading(true);
+    const params = filterParams();
     const res = await fetch(`/api/datasheets?${params}`);
     const data = await res.json();
     setDatasheets(data.datasheets || []);
     setLoading(false);
-  }, [assessorId, claimNo, fromDate, regNo, status, toDate]);
+  }, [filterParams]);
 
   useEffect(() => {
     load();
@@ -79,10 +96,12 @@ export function DatasheetRegister() {
       DatasheetStatus,
       number
     >;
+    let overdue = 0;
     datasheets.forEach((d) => {
       counts[d.status] += 1;
+      if (d.is_overdue) overdue += 1;
     });
-    return { total: datasheets.length, ...counts };
+    return { total: datasheets.length, overdue, ...counts };
   }, [datasheets]);
 
   const visibleDatasheets = useMemo(() => {
@@ -108,15 +127,11 @@ export function DatasheetRegister() {
     load();
   };
 
-  const exportCsv = () => {
-    const params = new URLSearchParams();
-    if (claimNo) params.set('claimNo', claimNo);
-    if (regNo) params.set('regNo', regNo);
-    if (status) params.set('status', status);
-    if (assessorId) params.set('assessorId', assessorId);
-    if (fromDate) params.set('fromDate', fromDate);
-    if (toDate) params.set('toDate', toDate);
-    window.location.href = `/api/datasheets/export?${params}`;
+  const exportReport = (format: string, pack = 'register') => {
+    const params = filterParams();
+    params.set('format', format);
+    params.set('pack', pack);
+    window.location.href = `/api/reports/export?${params}`;
   };
 
   const statusClass = (value: DatasheetStatus) => {
@@ -126,7 +141,13 @@ export function DatasheetRegister() {
     return 'status-draft';
   };
 
-  const statCards: { key: StatusFilter; label: string; value: number; valueClass: string; activeClass: string }[] = [
+  const statCards: {
+    key: StatusFilter | 'overdue';
+    label: string;
+    value: number;
+    valueClass: string;
+    activeClass: string;
+  }[] = [
     { key: '', label: 'Total', value: stats.total, valueClass: 'text-brand-700', activeClass: 'ring-2 ring-brand-500 border-brand-200 bg-brand-50/60' },
     { key: 'draft', label: 'Drafts', value: stats.draft, valueClass: 'text-amber-700', activeClass: 'ring-2 ring-amber-500 border-amber-200 bg-amber-50/60' },
     { key: 'submitted', label: 'Submitted', value: stats.submitted, valueClass: 'text-emerald-700', activeClass: 'ring-2 ring-emerald-500 border-emerald-200 bg-emerald-50/60' },
@@ -138,17 +159,25 @@ export function DatasheetRegister() {
     <div>
       <div className="mb-8 flex flex-wrap items-end justify-between gap-4">
         <div>
-          <h1 className="page-title">Datasheet Dashboard</h1>
+          <h1 className="page-title">Datasheet Register</h1>
           <p className="page-subtitle">
             {viewAll
-              ? 'All motor claim assessment datasheets'
+              ? 'All motor claim assessment datasheets · ageing from Date of Instruction'
               : `Your datasheets · ${ROLE_LABELS[user?.role || 'Assessor']}`}
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <button type="button" onClick={exportCsv} className="btn-secondary">
+          <button type="button" onClick={() => exportReport('csv')} className="btn-secondary">
             <Download className="h-4 w-4" />
-            Export CSV
+            CSV
+          </button>
+          <button type="button" onClick={() => exportReport('xlsx', 'register')} className="btn-secondary">
+            <FileSpreadsheet className="h-4 w-4" />
+            Excel
+          </button>
+          <button type="button" onClick={() => exportReport('pdf', 'analytics-pdf')} className="btn-secondary">
+            <FileText className="h-4 w-4" />
+            PDF report
           </button>
           <Link href="/datasheets/new" className="btn-primary">
             <Plus className="h-4 w-4" />
@@ -157,6 +186,13 @@ export function DatasheetRegister() {
         </div>
       </div>
 
+      {stats.overdue > 0 && (
+        <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+          <strong>{stats.overdue}</strong> open datasheet{stats.overdue === 1 ? '' : 's'} overdue
+          (more than {SLA_DAYS} days since Date of Instruction).
+        </div>
+      )}
+
       <div className="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
         {statCards.map((card) => {
           const isActive = status === card.key;
@@ -164,7 +200,7 @@ export function DatasheetRegister() {
             <button
               key={card.label}
               type="button"
-              onClick={() => setStatus(card.key)}
+              onClick={() => setStatus(card.key === 'overdue' ? '' : (card.key as StatusFilter))}
               className={`section-card w-full py-4 text-left transition hover:shadow-md ${
                 isActive ? card.activeClass : 'hover:border-slate-300'
               }`}
@@ -217,6 +253,8 @@ export function DatasheetRegister() {
                 <th>Claim No.</th>
                 <th>Reg. No.</th>
                 <th>Status</th>
+                <th>Instruction</th>
+                <th>Age</th>
                 {viewAll && <th>Assessor</th>}
                 {viewAll && <th>Assigned To</th>}
                 <th>Updated</th>
@@ -225,7 +263,7 @@ export function DatasheetRegister() {
             </thead>
             <tbody>
               {visibleDatasheets.map((row) => (
-                <tr key={row.id}>
+                <tr key={row.id} className={row.is_overdue ? 'bg-red-50/40' : undefined}>
                   <td className="font-semibold text-brand-800">{row.serial_no}</td>
                   <td>{row.claim_no || '—'}</td>
                   <td>{row.reg_no || '—'}</td>
@@ -233,6 +271,17 @@ export function DatasheetRegister() {
                     <span className={`status-badge ${statusClass(row.status)}`}>
                       {row.status.replace('_', ' ')}
                     </span>
+                  </td>
+                  <td className="text-slate-600">{row.date_of_instruction || '—'}</td>
+                  <td>
+                    {row.age_days != null ? (
+                      <span className={row.is_overdue ? 'font-semibold text-red-700' : 'text-slate-700'}>
+                        {row.age_days}d
+                        {row.is_overdue ? ' · overdue' : ''}
+                      </span>
+                    ) : (
+                      <span className="text-slate-400">—</span>
+                    )}
                   </td>
                   {viewAll && <td>{row.created_by_name || '—'}</td>}
                   {viewAll && <td>{row.assigned_to_name || '—'}</td>}

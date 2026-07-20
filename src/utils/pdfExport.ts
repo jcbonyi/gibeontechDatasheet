@@ -162,9 +162,12 @@ function drawBasicGrid(pdf: jsPDF, data: DatasheetFormData, y: number): number {
   fieldBlock(pdf, ML + (cols3 + gap) * 2, row, cols3, 'Instructed By', b.instructedBy, rowH);
   row += rowH + gap;
 
+  fieldBlock(pdf, ML, row, cols3, 'Date of Instruction', b.dateOfInstruction, rowH);
+  fieldBlock(pdf, ML + cols3 + gap, row, cols3, 'Date of Accident', b.dateOfAccident, rowH);
+  fieldBlock(pdf, ML + (cols3 + gap) * 2, row, cols3, 'Claim No.', b.claimNo, rowH);
+  row += rowH + gap;
+
   fieldBlock(pdf, ML, row, cols3, 'Policy No.', b.policyNo, rowH);
-  fieldBlock(pdf, ML + cols3 + gap, row, cols3, 'Claim No.', b.claimNo, rowH);
-  fieldBlock(pdf, ML + (cols3 + gap) * 2, row, cols3, 'Date of Accident', b.dateOfAccident, rowH);
   row += rowH + gap;
 
   fieldBlock(pdf, ML, row, cols5, 'Reg. No.', b.regNo, rowH);

@@ -144,6 +144,7 @@ export interface DatasheetFormData {
     clientInsurer: string;
     ownerInsured: string;
     instructedBy: string;
+    dateOfInstruction: string;
     policyNo: string;
     claimNo: string;
     dateOfAccident: string;
@@ -250,6 +251,7 @@ export function createDefaultFormData(seenByName = ''): DatasheetFormData {
       clientInsurer: '',
       ownerInsured: '',
       instructedBy: '',
+      dateOfInstruction: '',
       policyNo: '',
       claimNo: '',
       dateOfAccident: '',
@@ -350,6 +352,8 @@ export function mergeFormData(
   return {
     ...defaults,
     ...loaded,
+    header: { ...defaults.header, ...loaded.header },
+    basicInfo: { ...defaults.basicInfo, ...loaded.basicInfo },
     parts: { ...defaults.parts, ...loaded.parts },
     assessment: {
       ...defaults.assessment,
@@ -360,6 +364,13 @@ export function mergeFormData(
       },
     },
     documents: { ...defaults.documents, ...loaded.documents },
+    signOff: { ...defaults.signOff, ...loaded.signOff },
+    damage: {
+      ...defaults.damage,
+      ...loaded.damage,
+      vehicleDiagram: loaded.damage?.vehicleDiagram ?? defaults.damage.vehicleDiagram,
+    },
+    vehicleCondition: { ...defaults.vehicleCondition, ...loaded.vehicleCondition },
     inspection: loaded.inspection
       ? normalizeInspectionData({
           ...createDefaultInspectionFormData(),

@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { ClipboardList, LayoutDashboard, LogOut, Users } from 'lucide-react';
+import { BarChart3, ClipboardList, LayoutDashboard, LogOut, Users } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { Letterhead } from '@/components/Letterhead';
 import { COMPANY } from '@/constants/brand';
@@ -13,7 +13,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const { user, logout } = useAuth();
   const pathname = usePathname();
 
-  const isDashboard = pathname === '/datasheets';
+  const isRegister = pathname === '/datasheets' || pathname.startsWith('/datasheets/');
+  const isAnalytics = pathname.startsWith('/analytics');
   const isAdmin = pathname.startsWith('/admin');
 
   return (
@@ -43,11 +44,18 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 </Link>
               )}
               <Link
+                href="/analytics"
+                className={`nav-pill ${isAnalytics ? 'nav-pill-active' : 'nav-pill-idle'}`}
+              >
+                <BarChart3 className="h-4 w-4" />
+                Analytics
+              </Link>
+              <Link
                 href="/datasheets"
-                className={`nav-pill ${isDashboard ? 'nav-pill-active' : 'nav-pill-idle'}`}
+                className={`nav-pill ${isRegister && !isAnalytics ? 'nav-pill-active' : 'nav-pill-idle'}`}
               >
                 <LayoutDashboard className="h-4 w-4" />
-                Dashboard
+                Register
               </Link>
               <button
                 type="button"

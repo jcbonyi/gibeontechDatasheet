@@ -267,6 +267,7 @@ export function DatasheetForm({
               ['clientInsurer', 'Client/Insurer', true],
               ['ownerInsured', 'Owner/Insured', false],
               ['instructedBy', 'Instructed By', false],
+              ['dateOfInstruction', 'Date of Instruction', false],
               ['policyNo', 'Policy No.', false],
               ['claimNo', 'Claim No.', false],
               ['dateOfAccident', 'Date of Accident', false],
@@ -281,7 +282,11 @@ export function DatasheetForm({
               }
             >
               <input
-                type={fieldKey === 'dateOfAccident' ? 'date' : 'text'}
+                type={
+                  fieldKey === 'dateOfAccident' || fieldKey === 'dateOfInstruction'
+                    ? 'date'
+                    : 'text'
+                }
                 {...register(`basicInfo.${fieldKey as keyof DatasheetFormData['basicInfo']}`)}
                 readOnly={readOnly}
                 className="form-input"

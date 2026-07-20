@@ -42,6 +42,7 @@ const baseDatasheetSchema = z.object({
     clientInsurer: z.string(),
     ownerInsured: z.string(),
     instructedBy: z.string(),
+    dateOfInstruction: z.string(),
     policyNo: z.string(),
     claimNo: z.string(),
     dateOfAccident: z.string(),
