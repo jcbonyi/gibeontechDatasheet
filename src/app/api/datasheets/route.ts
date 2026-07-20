@@ -12,17 +12,7 @@ import { handleRouteError } from '@/lib/routeErrors';
 import { canViewAllDatasheets } from '@/lib/permissions';
 import { createDefaultFormData, type DatasheetStatus } from '@/types/datasheet';
 import { toListItem } from '@/lib/tracking';
-
-function extractSearchFields(formData: Record<string, unknown>) {
-  const basic = (formData.basicInfo || {}) as Record<string, string>;
-  const inspection = formData.inspection as
-    | { vehicleDetails?: { registrationNumber?: string } }
-    | undefined;
-  return {
-    claimNo: basic.claimNo || null,
-    regNo: basic.regNo || inspection?.vehicleDetails?.registrationNumber || null,
-  };
-}
+import { extractDenormalizedFields } from '@/lib/extractFields';
 
 export async function GET(req: NextRequest) {
   try {
@@ -39,6 +29,9 @@ export async function GET(req: NextRequest) {
         : undefined,
       fromDate: searchParams.get('fromDate') || undefined,
       toDate: searchParams.get('toDate') || undefined,
+      q: searchParams.get('q') || undefined,
+      insurer: searchParams.get('insurer') || undefined,
+      unallocated: searchParams.get('unallocated') === '1',
       viewAll: canViewAllDatasheets(user.role),
       scopeUserId: canViewAllDatasheets(user.role) ? undefined : user.id,
     });
@@ -67,11 +60,10 @@ export async function POST(req: NextRequest) {
     ) as DatasheetStatus;
     formData = applySeenBy(formData, user.name);
 
-    const { claimNo, regNo } = extractSearchFields(formData);
-
     let datasheet = null;
     for (let attempt = 0; attempt < 5; attempt++) {
       const serialNo = await allocateNextSerialNo();
+      const denorm = extractDenormalizedFields(formData, serialNo);
       try {
         datasheet = await insertDatasheetRecord({
           serial_no: serialNo,
@@ -79,12 +71,20 @@ export async function POST(req: NextRequest) {
           created_by: user.id,
           updated_by: user.id,
           form_data: formData,
-          claim_no: claimNo,
-          reg_no: regNo,
+          claim_no: denorm.claim_no,
+          reg_no: denorm.reg_no,
           assigned_to: null,
           assigned_by: null,
           assigned_at: null,
           reopen_reason: null,
+          date_of_instruction: denorm.date_of_instruction,
+          client_insurer: denorm.client_insurer,
+          form_types: denorm.form_types,
+          cancel_reason: null,
+          query_reason: null,
+          reviewed_by: null,
+          reviewed_at: null,
+          search_text: denorm.search_text,
         });
         break;
       } catch (err) {

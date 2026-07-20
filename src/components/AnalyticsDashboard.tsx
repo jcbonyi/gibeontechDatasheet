@@ -116,23 +116,59 @@ export function AnalyticsDashboard() {
         </div>
       ) : (
         <>
-          <div className="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+          <div className="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
             {[
               { label: 'Total', value: kpis?.total ?? 0, className: 'text-brand-700' },
               { label: 'Open tasks', value: kpis?.open ?? 0, className: 'text-sky-700' },
               { label: 'Overdue', value: kpis?.overdue ?? 0, className: 'text-red-700' },
               {
+                label: 'SLA compliance',
+                value: kpis?.slaCompliancePct != null ? `${kpis.slaCompliancePct}%` : '—',
+                className: 'text-emerald-700',
+              },
+              {
                 label: 'Avg open age',
                 value: kpis?.avgAgeDays != null ? `${kpis.avgAgeDays}d` : '—',
                 className: 'text-amber-700',
               },
-              { label: 'Reports issued', value: kpis?.approvedInPeriod ?? 0, className: 'text-emerald-700' },
+              { label: 'Reports issued', value: kpis?.approvedInPeriod ?? 0, className: 'text-violet-700' },
             ].map((card) => (
               <div key={card.label} className="section-card py-4">
                 <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">{card.label}</p>
                 <p className={`mt-1 text-2xl font-bold ${card.className}`}>{card.value}</p>
               </div>
             ))}
+          </div>
+
+          <div className="section-card mb-6">
+            <h2 className="mb-3 text-sm font-semibold text-brand-800">Cycle time (from audit trail)</h2>
+            <div className="grid gap-4 sm:grid-cols-3">
+              <div>
+                <p className="text-xs uppercase text-slate-500">Instructed → Report issued</p>
+                <p className="text-xl font-bold text-slate-800">
+                  {summary.cycleTime.avgInstructedToIssuedDays != null
+                    ? `${summary.cycleTime.avgInstructedToIssuedDays}d`
+                    : '—'}
+                </p>
+                <p className="text-xs text-slate-400">{summary.cycleTime.sampleSizeIssued} samples</p>
+              </div>
+              <div>
+                <p className="text-xs uppercase text-slate-500">Avg days In Progress</p>
+                <p className="text-xl font-bold text-slate-800">
+                  {summary.cycleTime.avgInProgressDays != null
+                    ? `${summary.cycleTime.avgInProgressDays}d`
+                    : '—'}
+                </p>
+              </div>
+              <div>
+                <p className="text-xs uppercase text-slate-500">Avg days Under Review</p>
+                <p className="text-xl font-bold text-slate-800">
+                  {summary.cycleTime.avgUnderReviewDays != null
+                    ? `${summary.cycleTime.avgUnderReviewDays}d`
+                    : '—'}
+                </p>
+              </div>
+            </div>
           </div>
 
           <div className="mb-6 grid gap-6 lg:grid-cols-2">
@@ -180,7 +216,10 @@ export function AnalyticsDashboard() {
             <div className="section-card">
               <h2 className="mb-4 text-sm font-semibold text-brand-800">Top insurers</h2>
               <SimpleHorizontalBars
-                items={summary.byInsurer.map((i) => ({ label: i.name, value: i.count }))}
+                items={summary.byInsurer.map((i) => ({
+                  label: `${i.name}${i.slaPct != null ? ` (${i.slaPct}% SLA)` : ''}`,
+                  value: i.count,
+                }))}
               />
             </div>
           </div>

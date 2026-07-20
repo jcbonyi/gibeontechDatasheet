@@ -29,11 +29,12 @@ export async function POST(
 
     const body = await req.json();
     const reason = String(body.reason || '').trim();
-    if (!reason) return badRequest('Reopen reason is required');
+    if (reason.length < 3) return badRequest('Reopen reason is required (at least 3 characters)');
 
     const updated = await updateDatasheetRecord(Number(id), {
       status: 'queried',
       reopen_reason: reason,
+      query_reason: reason,
       updated_by: user.id,
     });
 

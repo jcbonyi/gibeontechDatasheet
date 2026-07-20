@@ -6,13 +6,16 @@ import {
   countReceivedDocuments,
   DOCUMENT_CHECKLIST,
   DatasheetFormData,
+  type FormType,
 } from '@/types/datasheet';
+import { getChecklistForFormTypes } from '@/lib/opsConfig';
 import { FormField } from './FormField';
 
 interface DocumentChecklistProps {
   control: Control<DatasheetFormData>;
   register: UseFormRegister<DatasheetFormData>;
   documents: DatasheetFormData['documents'];
+  formTypes?: FormType[];
   readOnly?: boolean;
 }
 
@@ -20,17 +23,47 @@ export function DocumentChecklist({
   control,
   register,
   documents,
+  formTypes = ['Assessment'],
   readOnly,
 }: DocumentChecklistProps) {
   const progress = countReceivedDocuments(documents);
+  const template = getChecklistForFormTypes(formTypes);
+  const coreKeys = new Set(DOCUMENT_CHECKLIST.map((d) => d.key));
 
   return (
     <div>
       <div className="mb-4 flex items-center justify-between rounded-xl border border-accent-200 bg-accent-50 px-4 py-3">
-        <p className="text-sm font-medium text-accent-800">Required Documents</p>
-        <p className="text-sm font-semibold text-accent-700">
-          {progress.received}/{progress.total} received
+        <p className="text-sm font-medium text-accent-800">
+          Documents · template for {formTypes.join(', ') || 'Assessment'}
         </p>
+        <p className="text-sm font-semibold text-accent-700">
+          {progress.received}/{progress.total} core received
+        </p>
+      </div>
+
+      <div className="mb-4 rounded-xl border border-slate-200 bg-slate-50/80 p-4">
+        <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
+          Recommended for this form type
+        </p>
+        <ul className="space-y-1.5 text-sm text-slate-700">
+          {template.map((item) => (
+            <li key={item.key} className="flex items-center gap-2">
+              <span
+                className={`inline-block h-1.5 w-1.5 rounded-full ${
+                  item.required ? 'bg-brand-600' : 'bg-slate-300'
+                }`}
+              />
+              {item.label}
+              {item.required && (
+                <span className="text-[10px] font-semibold uppercase text-brand-600">Required</span>
+              )}
+              {coreKeys.has(item.key as keyof DatasheetFormData['documents']) &&
+                documents[item.key as keyof DatasheetFormData['documents']]?.received && (
+                  <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
+                )}
+            </li>
+          ))}
+        </ul>
       </div>
 
       <div className="space-y-4">

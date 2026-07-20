@@ -172,9 +172,42 @@ export default function EditDatasheetPage() {
                       ? 'btn-secondary text-red-700 hover:bg-red-50'
                       : 'btn-secondary'
                 }
-                onClick={() =>
-                  runAction(`/api/datasheets/${id}/review`, 'PATCH', { status: action.status })
-                }
+                onClick={() => {
+                  if (action.status === 'queried') {
+                    const reason = prompt('Query reason (required):');
+                    if (!reason || reason.trim().length < 3) {
+                      setActionMessage('Query reason is required (min 3 characters)');
+                      return;
+                    }
+                    runAction(`/api/datasheets/${id}/review`, 'PATCH', {
+                      status: action.status,
+                      reason: reason.trim(),
+                    });
+                    return;
+                  }
+                  if (action.status === 'cancelled') {
+                    const code = prompt(
+                      'Cancellation code:\n' +
+                        'instruction_withdrawn | duplicate_file | wrong_assessor_firm | vehicle_not_available | claim_repudiated | other',
+                    );
+                    if (!code) return;
+                    let reason = '';
+                    if (code.trim() === 'other') {
+                      reason = prompt('Describe cancellation:') || '';
+                      if (reason.trim().length < 3) {
+                        setActionMessage('Please describe the cancellation reason');
+                        return;
+                      }
+                    }
+                    runAction(`/api/datasheets/${id}/review`, 'PATCH', {
+                      status: action.status,
+                      cancelReason: code.trim(),
+                      reason,
+                    });
+                    return;
+                  }
+                  runAction(`/api/datasheets/${id}/review`, 'PATCH', { status: action.status });
+                }}
               >
                 Move to {action.label}
               </button>
@@ -184,8 +217,12 @@ export default function EditDatasheetPage() {
                 type="button"
                 className="btn-secondary"
                 onClick={() => {
-                  const reason = prompt('Reason for reopening this file:');
-                  if (reason) runAction(`/api/datasheets/${id}/reopen`, 'POST', { reason });
+                  const reason = prompt('Reason for reopening this file (required):');
+                  if (!reason || reason.trim().length < 3) {
+                    setActionMessage('Reopen reason is required (min 3 characters)');
+                    return;
+                  }
+                  runAction(`/api/datasheets/${id}/reopen`, 'POST', { reason: reason.trim() });
                 }}
               >
                 Reopen as Queried

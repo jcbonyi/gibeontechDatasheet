@@ -95,6 +95,8 @@ const baseDatasheetSchema = z.object({
     seenBy: z.string(),
     signatureDateTime: z.string(),
     assessorSignature: z.string(),
+    reviewedBy: z.string(),
+    reviewedAt: z.string(),
   }),
   inspection: inspectionFormSchema.optional(),
 });

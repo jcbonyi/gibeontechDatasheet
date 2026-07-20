@@ -10,9 +10,18 @@ interface PhotoUploadProps {
   value: string;
   onChange: (value: string) => void;
   error?: string;
+  datasheetId?: number;
 }
 
-export function PhotoUpload({ label, required, value, onChange, error }: PhotoUploadProps) {
+/** Prefer server/object storage URL; fall back to compressed data URL. */
+export function PhotoUpload({
+  label,
+  required,
+  value,
+  onChange,
+  error,
+  datasheetId,
+}: PhotoUploadProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
 
@@ -20,10 +29,26 @@ export function PhotoUpload({ label, required, value, onChange, error }: PhotoUp
     if (!file.type.startsWith('image/')) return;
     setUploading(true);
     try {
+      const form = new FormData();
+      form.append('file', file);
+      if (datasheetId) form.append('datasheetId', String(datasheetId));
+      const res = await fetch('/api/uploads', { method: 'POST', body: form });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.url) {
+          onChange(data.url);
+          return;
+        }
+      }
       const compressed = await compressImageDataUrl(file);
       onChange(compressed);
     } catch {
-      onChange('');
+      try {
+        const compressed = await compressImageDataUrl(file);
+        onChange(compressed);
+      } catch {
+        onChange('');
+      }
     } finally {
       setUploading(false);
     }
@@ -73,9 +98,9 @@ export function PhotoUpload({ label, required, value, onChange, error }: PhotoUp
             <ImagePlus className="h-6 w-6 text-brand-500" />
           </div>
           <p className="text-sm font-medium text-slate-700">
-            {uploading ? 'Processing image…' : 'Drop image or click to upload'}
+            {uploading ? 'Uploading…' : 'Drop image or click to upload'}
           </p>
-          <p className="mt-1 text-xs text-slate-400">PNG, JPG · Compressed automatically</p>
+          <p className="mt-1 text-xs text-slate-400">Stored securely · PNG/JPG · max 8MB</p>
         </div>
       )}
 
@@ -88,21 +113,13 @@ export function PhotoUpload({ label, required, value, onChange, error }: PhotoUp
         onChange={(e) => {
           const file = e.target.files?.[0];
           if (file) handleFile(file);
+          e.target.value = '';
         }}
       />
-
-      {!value && (
-        <button
-          type="button"
-          onClick={() => inputRef.current?.click()}
-          className="mt-2 flex w-full items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white py-2 text-xs font-medium text-slate-600 transition-colors hover:bg-slate-50"
-        >
-          <Camera className="h-4 w-4" />
-          Use Camera
-        </button>
-      )}
-
       {error && <p className="form-error">{error}</p>}
+      <p className="mt-1 flex items-center gap-1 text-[11px] text-slate-400">
+        <Camera className="h-3 w-3" /> Field-friendly camera capture supported
+      </p>
     </div>
   );
 }

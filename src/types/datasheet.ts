@@ -202,6 +202,8 @@ export interface DatasheetFormData {
     seenBy: string;
     signatureDateTime: string;
     assessorSignature: string;
+    reviewedBy: string;
+    reviewedAt: string;
   };
   inspection?: InspectionFormData;
 }
@@ -309,6 +311,8 @@ export function createDefaultFormData(seenByName = ''): DatasheetFormData {
       seenBy: seenByName,
       signatureDateTime: '',
       assessorSignature: '',
+      reviewedBy: '',
+      reviewedAt: '',
     },
     inspection: undefined,
   };

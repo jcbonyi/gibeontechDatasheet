@@ -591,6 +591,7 @@ export function DatasheetForm({
             control={control}
             register={register}
             documents={documents}
+            formTypes={formTypes}
             readOnly={readOnly}
           />
         </div>
@@ -623,6 +624,22 @@ export function DatasheetForm({
             <input
               type="datetime-local"
               {...register('signOff.signatureDateTime')}
+              readOnly={readOnly}
+              className="form-input"
+            />
+          </FormField>
+          <FormField label="Reviewed by (Principal / Ops)">
+            <input
+              {...register('signOff.reviewedBy')}
+              readOnly={readOnly}
+              className="form-input"
+              placeholder="Name of reviewing officer"
+            />
+          </FormField>
+          <FormField label="Review date/time">
+            <input
+              type="datetime-local"
+              {...register('signOff.reviewedAt')}
               readOnly={readOnly}
               className="form-input"
             />

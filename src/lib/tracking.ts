@@ -1,6 +1,6 @@
 import type { DatasheetStatus, FormType } from '@/types/datasheet';
 import { DATASHEET_STATUSES, isOpenStatus, normalizeStatus } from '@/lib/status';
-import type { DbDatasheetListRow } from '@/lib/db';
+import type { DbAuditEntry, DbDatasheetListRow } from '@/lib/db';
 
 export type AgeBand = '0-3' | '4-7' | '8-14' | '15+' | 'unknown';
 
@@ -14,7 +14,6 @@ export const AGE_BAND_LABELS: Record<AgeBand, string> = {
   unknown: 'No instruction date',
 };
 
-/** Open items older than this many days are flagged overdue. */
 export const SLA_DAYS = 7;
 
 export interface TrackingFields {
@@ -30,6 +29,13 @@ export interface DatasheetListItem
   extends Omit<DbDatasheetListRow, 'form_data'>,
     TrackingFields {}
 
+export interface CycleTimeMetrics {
+  avgInstructedToIssuedDays: number | null;
+  avgInProgressDays: number | null;
+  avgUnderReviewDays: number | null;
+  sampleSizeIssued: number;
+}
+
 export interface AnalyticsSummary {
   kpis: {
     total: number;
@@ -37,11 +43,21 @@ export interface AnalyticsSummary {
     overdue: number;
     avgAgeDays: number | null;
     approvedInPeriod: number;
+    slaCompliancePct: number | null;
+    withinSla: number;
   };
+  cycleTime: CycleTimeMetrics;
   byStatus: { status: DatasheetStatus; count: number }[];
   byAgeBand: { band: AgeBand; label: string; count: number }[];
-  byAssessor: { name: string; total: number; open: number; overdue: number; avgAgeDays: number | null }[];
-  byInsurer: { name: string; count: number }[];
+  byAssessor: {
+    name: string;
+    total: number;
+    open: number;
+    overdue: number;
+    avgAgeDays: number | null;
+    slaPct: number | null;
+  }[];
+  byInsurer: { name: string; count: number; overdue: number; slaPct: number | null }[];
   byFormType: { type: string; count: number }[];
   volumeByMonth: { month: string; created: number; approved: number }[];
   agingQueue: {
@@ -86,18 +102,29 @@ export function ageBandFromDays(days: number | null): AgeBand {
 export function extractTrackingFields(
   formData: Record<string, unknown> | null | undefined,
   status: DatasheetStatus,
+  row?: Pick<DbDatasheetListRow, 'date_of_instruction' | 'client_insurer' | 'form_types'>,
   asOf = new Date(),
 ): TrackingFields {
   const basic = (formData?.basicInfo || {}) as Record<string, string>;
   const header = (formData?.header || {}) as { formTypes?: FormType[] };
-  const dateOfInstruction = basic.dateOfInstruction?.trim() || null;
+  const dateOfInstruction =
+    row?.date_of_instruction?.toString().slice(0, 10) ||
+    basic.dateOfInstruction?.trim() ||
+    null;
   const ageDays = calcAgeDays(dateOfInstruction, asOf);
   const open = isOpenStatus(status);
+  const formTypesFromCol = row?.form_types
+    ? (row.form_types.split(',').filter(Boolean) as FormType[])
+    : [];
 
   return {
     date_of_instruction: dateOfInstruction,
-    client_insurer: basic.clientInsurer?.trim() || null,
-    form_types: Array.isArray(header.formTypes) ? header.formTypes : [],
+    client_insurer: row?.client_insurer || basic.clientInsurer?.trim() || null,
+    form_types: formTypesFromCol.length
+      ? formTypesFromCol
+      : Array.isArray(header.formTypes)
+        ? header.formTypes
+        : [],
     age_days: ageDays,
     age_band: ageBandFromDays(ageDays),
     is_overdue: open && ageDays !== null && ageDays > SLA_DAYS,
@@ -106,7 +133,7 @@ export function extractTrackingFields(
 
 export function toListItem(row: DbDatasheetListRow): DatasheetListItem {
   const status = normalizeStatus(row.status);
-  const tracking = extractTrackingFields(row.form_data, status);
+  const tracking = extractTrackingFields(row.form_data, status, row);
   const { form_data: _fd, ...rest } = row;
   return { ...rest, status, ...tracking };
 }
@@ -116,14 +143,84 @@ function avg(nums: number[]): number | null {
   return Math.round((nums.reduce((a, b) => a + b, 0) / nums.length) * 10) / 10;
 }
 
-export function buildAnalyticsSummary(rows: DatasheetListItem[]): AnalyticsSummary {
+function daysBetween(a: string, b: string): number {
+  const da = new Date(a).getTime();
+  const db = new Date(b).getTime();
+  return Math.max(0, Math.floor((db - da) / (1000 * 60 * 60 * 24)));
+}
+
+/** Derive cycle times from status_changed audit events. */
+export function buildCycleTimeMetrics(
+  rows: DatasheetListItem[],
+  audits: DbAuditEntry[],
+): CycleTimeMetrics {
+  const byDs = new Map<number, DbAuditEntry[]>();
+  audits.forEach((a) => {
+    const list = byDs.get(a.datasheet_id) || [];
+    list.push(a);
+    byDs.set(a.datasheet_id, list);
+  });
+
+  const instructedToIssued: number[] = [];
+  const inProgressDwells: number[] = [];
+  const underReviewDwells: number[] = [];
+
+  for (const row of rows) {
+    const events = (byDs.get(row.id) || [])
+      .filter((e) => e.action === 'status_changed' || e.action === 'created')
+      .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+
+    let enteredInProgress: string | null = null;
+    let enteredUnderReview: string | null = null;
+
+    for (const e of events) {
+      const to = String(e.details?.to || '');
+      if (to === 'in_progress') enteredInProgress = e.created_at;
+      if (to === 'under_review') enteredUnderReview = e.created_at;
+      if (to === 'pending_review' && enteredInProgress) {
+        inProgressDwells.push(daysBetween(enteredInProgress, e.created_at));
+        enteredInProgress = null;
+      }
+      if ((to === 'report_issued' || to === 'queried') && enteredUnderReview) {
+        underReviewDwells.push(daysBetween(enteredUnderReview, e.created_at));
+        enteredUnderReview = null;
+      }
+      if (to === 'report_issued' && row.date_of_instruction) {
+        instructedToIssued.push(daysBetween(`${row.date_of_instruction}T00:00:00`, e.created_at));
+      }
+    }
+
+    if (
+      (row.status === 'report_issued' || row.status === 'closed') &&
+      row.date_of_instruction &&
+      !instructedToIssued.length
+    ) {
+      instructedToIssued.push(daysBetween(`${row.date_of_instruction}T00:00:00`, row.updated_at));
+    }
+  }
+
+  return {
+    avgInstructedToIssuedDays: avg(instructedToIssued),
+    avgInProgressDays: avg(inProgressDwells),
+    avgUnderReviewDays: avg(underReviewDwells),
+    sampleSizeIssued: instructedToIssued.length,
+  };
+}
+
+export function buildAnalyticsSummary(
+  rows: DatasheetListItem[],
+  audits: DbAuditEntry[] = [],
+): AnalyticsSummary {
   const byStatusMap = new Map<DatasheetStatus, number>();
   const byAgeMap = new Map<AgeBand, number>();
   const byAssessorMap = new Map<
     string,
-    { total: number; open: number; overdue: number; ages: number[] }
+    { total: number; open: number; overdue: number; ages: number[]; closedWithAge: number[]; withinSla: number }
   >();
-  const byInsurerMap = new Map<string, number>();
+  const byInsurerMap = new Map<
+    string,
+    { count: number; overdue: number; closedWithAge: number[]; withinSla: number }
+  >();
   const byFormTypeMap = new Map<string, number>();
   const volumeMap = new Map<string, { created: number; approved: number }>();
 
@@ -132,6 +229,8 @@ export function buildAnalyticsSummary(rows: DatasheetListItem[]): AnalyticsSumma
   let open = 0;
   let overdue = 0;
   let approvedInPeriod = 0;
+  let withinSla = 0;
+  let slaDenom = 0;
   const openAges: number[] = [];
 
   for (const row of rows) {
@@ -139,15 +238,31 @@ export function buildAnalyticsSummary(rows: DatasheetListItem[]): AnalyticsSumma
     byAgeMap.set(row.age_band, (byAgeMap.get(row.age_band) || 0) + 1);
 
     const assessor = row.assigned_to_name || row.created_by_name || 'Unassigned';
-    const a = byAssessorMap.get(assessor) || { total: 0, open: 0, overdue: 0, ages: [] };
+    const a = byAssessorMap.get(assessor) || {
+      total: 0,
+      open: 0,
+      overdue: 0,
+      ages: [],
+      closedWithAge: [],
+      withinSla: 0,
+    };
     a.total += 1;
+
     if (isOpenStatus(row.status)) {
       a.open += 1;
       open += 1;
       if (row.age_days !== null) openAges.push(row.age_days);
-      a.ages.push(...(row.age_days !== null ? [row.age_days] : []));
+      if (row.age_days !== null) a.ages.push(row.age_days);
     } else if (row.status === 'report_issued' || row.status === 'closed') {
       approvedInPeriod += 1;
+      if (row.age_days !== null) {
+        slaDenom += 1;
+        a.closedWithAge.push(row.age_days);
+        if (row.age_days <= SLA_DAYS) {
+          withinSla += 1;
+          a.withinSla += 1;
+        }
+      }
     }
     if (row.is_overdue) {
       a.overdue += 1;
@@ -156,7 +271,22 @@ export function buildAnalyticsSummary(rows: DatasheetListItem[]): AnalyticsSumma
     byAssessorMap.set(assessor, a);
 
     const insurer = row.client_insurer || 'Unknown';
-    byInsurerMap.set(insurer, (byInsurerMap.get(insurer) || 0) + 1);
+    const ins = byInsurerMap.get(insurer) || {
+      count: 0,
+      overdue: 0,
+      closedWithAge: [],
+      withinSla: 0,
+    };
+    ins.count += 1;
+    if (row.is_overdue) ins.overdue += 1;
+    if (
+      (row.status === 'report_issued' || row.status === 'closed') &&
+      row.age_days !== null
+    ) {
+      ins.closedWithAge.push(row.age_days);
+      if (row.age_days <= SLA_DAYS) ins.withinSla += 1;
+    }
+    byInsurerMap.set(insurer, ins);
 
     const types = row.form_types.length ? row.form_types : ['Unknown'];
     types.forEach((t) => byFormTypeMap.set(t, (byFormTypeMap.get(t) || 0) + 1));
@@ -185,6 +315,8 @@ export function buildAnalyticsSummary(rows: DatasheetListItem[]): AnalyticsSumma
       age_band: r.age_band,
     }));
 
+  const slaPct = slaDenom ? Math.round((withinSla / slaDenom) * 1000) / 10 : null;
+
   return {
     kpis: {
       total: rows.length,
@@ -192,7 +324,10 @@ export function buildAnalyticsSummary(rows: DatasheetListItem[]): AnalyticsSumma
       overdue,
       avgAgeDays: avg(openAges),
       approvedInPeriod,
+      slaCompliancePct: slaPct,
+      withinSla,
     },
+    cycleTime: buildCycleTimeMetrics(rows, audits),
     byStatus: DATASHEET_STATUSES.map((status) => ({
       status,
       count: byStatusMap.get(status) || 0,
@@ -209,10 +344,20 @@ export function buildAnalyticsSummary(rows: DatasheetListItem[]): AnalyticsSumma
         open: v.open,
         overdue: v.overdue,
         avgAgeDays: avg(v.ages),
+        slaPct: v.closedWithAge.length
+          ? Math.round((v.withinSla / v.closedWithAge.length) * 1000) / 10
+          : null,
       }))
       .sort((a, b) => b.open - a.open || b.total - a.total),
     byInsurer: [...byInsurerMap.entries()]
-      .map(([name, count]) => ({ name, count }))
+      .map(([name, v]) => ({
+        name,
+        count: v.count,
+        overdue: v.overdue,
+        slaPct: v.closedWithAge.length
+          ? Math.round((v.withinSla / v.closedWithAge.length) * 1000) / 10
+          : null,
+      }))
       .sort((a, b) => b.count - a.count)
       .slice(0, 12),
     byFormType: [...byFormTypeMap.entries()]

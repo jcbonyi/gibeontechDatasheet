@@ -16,17 +16,7 @@ import {
   getDatasheetPermissions,
 } from '@/lib/permissions';
 import type { DatasheetStatus } from '@/types/datasheet';
-
-function extractSearchFields(formData: Record<string, unknown>) {
-  const basic = (formData.basicInfo || {}) as Record<string, string>;
-  const inspection = formData.inspection as
-    | { vehicleDetails?: { registrationNumber?: string } }
-    | undefined;
-  return {
-    claimNo: basic.claimNo || null,
-    regNo: basic.regNo || inspection?.vehicleDetails?.registrationNumber || null,
-  };
-}
+import { extractDenormalizedFields } from '@/lib/extractFields';
 
 export async function GET(
   req: NextRequest,
@@ -53,6 +43,9 @@ export async function GET(
         ...datasheet,
         created_by_name: datasheet.created_by ? userMap.get(datasheet.created_by) || null : null,
         assigned_to_name: datasheet.assigned_to ? userMap.get(datasheet.assigned_to) || null : null,
+        reviewed_by_name: datasheet.reviewed_by
+          ? userMap.get(datasheet.reviewed_by) || null
+          : null,
       },
       permissions,
       audit,
@@ -80,7 +73,6 @@ export async function PATCH(
     const body = await req.json();
     let formData = (body.formData ?? datasheet.form_data) as Record<string, unknown>;
     let status = (body.status ?? datasheet.status) as DatasheetStatus;
-    // Legacy aliases from older clients
     if ((status as string) === 'draft') status = 'instructed';
     if ((status as string) === 'submitted') status = 'pending_review';
     if ((status as string) === 'approved') status = 'report_issued';
@@ -90,14 +82,18 @@ export async function PATCH(
     }
 
     formData = applySeenBy(formData, user.name);
-    const { claimNo, regNo } = extractSearchFields(formData);
+    const denorm = extractDenormalizedFields(formData, datasheet.serial_no);
 
     const updated = await updateDatasheetRecord(Number(id), {
       status,
       updated_by: user.id,
       form_data: formData,
-      claim_no: claimNo,
-      reg_no: regNo,
+      claim_no: denorm.claim_no,
+      reg_no: denorm.reg_no,
+      date_of_instruction: denorm.date_of_instruction,
+      client_insurer: denorm.client_insurer,
+      form_types: denorm.form_types,
+      search_text: denorm.search_text,
     });
 
     await logDatasheetAudit(datasheet.id, user.id, user.name, 'updated', {
@@ -126,9 +122,6 @@ export async function DELETE(
       return NextResponse.json({ message: 'Not found' }, { status: 404 });
     }
 
-    await logDatasheetAudit(datasheet.id, user.id, user.name, 'deleted', {
-      serial_no: datasheet.serial_no,
-    });
     await query('DELETE FROM datasheets WHERE id = $1', [Number(id)]);
     return NextResponse.json({ ok: true });
   } catch (err) {

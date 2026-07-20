@@ -28,6 +28,14 @@ export interface DbDatasheet {
   form_data: Record<string, unknown>;
   claim_no: string | null;
   reg_no: string | null;
+  date_of_instruction?: string | null;
+  client_insurer?: string | null;
+  form_types?: string | null;
+  cancel_reason?: string | null;
+  query_reason?: string | null;
+  reviewed_by?: number | null;
+  reviewed_at?: string | null;
+  search_text?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -35,6 +43,7 @@ export interface DbDatasheet {
 export interface DbDatasheetListRow extends DbDatasheet {
   created_by_name?: string | null;
   assigned_to_name?: string | null;
+  reviewed_by_name?: string | null;
 }
 
 export interface DbAuditEntry {
@@ -56,6 +65,9 @@ export interface DatasheetListFilters {
   toDate?: string;
   scopeUserId?: number;
   viewAll?: boolean;
+  q?: string;
+  unallocated?: boolean;
+  insurer?: string;
 }
 
 interface JsonStore {
@@ -247,6 +259,26 @@ async function initPostgres(): Promise<void> {
         'pending_review', 'under_review', 'queried', 'report_issued',
         'on_hold', 'closed', 'cancelled'
       ))
+  `);
+
+  await pool.query(`ALTER TABLE datasheets ADD COLUMN IF NOT EXISTS date_of_instruction DATE`);
+  await pool.query(`ALTER TABLE datasheets ADD COLUMN IF NOT EXISTS client_insurer TEXT`);
+  await pool.query(`ALTER TABLE datasheets ADD COLUMN IF NOT EXISTS form_types TEXT`);
+  await pool.query(`ALTER TABLE datasheets ADD COLUMN IF NOT EXISTS cancel_reason TEXT`);
+  await pool.query(`ALTER TABLE datasheets ADD COLUMN IF NOT EXISTS query_reason TEXT`);
+  await pool.query(`ALTER TABLE datasheets ADD COLUMN IF NOT EXISTS reviewed_by INTEGER REFERENCES users(id) ON DELETE SET NULL`);
+  await pool.query(`ALTER TABLE datasheets ADD COLUMN IF NOT EXISTS reviewed_at TIMESTAMPTZ`);
+  await pool.query(`ALTER TABLE datasheets ADD COLUMN IF NOT EXISTS search_text TEXT`);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS media_assets (
+      id SERIAL PRIMARY KEY,
+      datasheet_id INTEGER REFERENCES datasheets(id) ON DELETE CASCADE,
+      path TEXT NOT NULL,
+      mime_type TEXT,
+      size_bytes INTEGER,
+      created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
   `);
 
   await pool.query(`
@@ -673,6 +705,7 @@ function enrichDatasheetRows(rows: DbDatasheet[], users: DbUser[]): DbDatasheetL
     status: normalizeStatus(row.status),
     created_by_name: row.created_by ? userMap.get(row.created_by) || null : null,
     assigned_to_name: row.assigned_to ? userMap.get(row.assigned_to) || null : null,
+    reviewed_by_name: row.reviewed_by ? userMap.get(row.reviewed_by) || null : null,
   }));
 }
 
@@ -697,6 +730,29 @@ function filterDatasheetRows(rows: DbDatasheet[], filters: DatasheetListFilters)
     result = result.filter(
       (r) => r.created_by === filters.assessorId || r.assigned_to === filters.assessorId,
     );
+  }
+  if (filters.unallocated) {
+    result = result.filter((r) => !r.assigned_to);
+  }
+  if (filters.insurer) {
+    const q = filters.insurer.toLowerCase();
+    result = result.filter((r) => (r.client_insurer || '').toLowerCase().includes(q));
+  }
+  if (filters.q) {
+    const q = filters.q.toLowerCase();
+    result = result.filter((r) => {
+      const hay = [
+        r.search_text,
+        r.serial_no,
+        r.claim_no,
+        r.reg_no,
+        r.client_insurer,
+      ]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase();
+      return hay.includes(q);
+    });
   }
   if (filters.fromDate) {
     const from = new Date(filters.fromDate).getTime();
@@ -729,6 +785,9 @@ export async function listDatasheets(filters: DatasheetListFilters): Promise<DbD
     if (filters.status) q = q.eq('status', filters.status);
     if (filters.claimNo) q = q.ilike('claim_no', `%${filters.claimNo}%`);
     if (filters.regNo) q = q.ilike('reg_no', `%${filters.regNo}%`);
+    if (filters.insurer) q = q.ilike('client_insurer', `%${filters.insurer}%`);
+    if (filters.unallocated) q = q.is('assigned_to', null);
+    if (filters.q) q = q.ilike('search_text', `%${filters.q}%`);
     if (!filters.viewAll && filters.scopeUserId) {
       q = q.or(
         `created_by.eq.${filters.scopeUserId},assigned_to.eq.${filters.scopeUserId}`,
@@ -765,6 +824,19 @@ export async function listDatasheets(filters: DatasheetListFilters): Promise<DbD
   if (filters.regNo) {
     params.push(`%${filters.regNo}%`);
     conditions.push(`d.reg_no ILIKE $${params.length}`);
+  }
+  if (filters.insurer) {
+    params.push(`%${filters.insurer}%`);
+    conditions.push(`d.client_insurer ILIKE $${params.length}`);
+  }
+  if (filters.unallocated) {
+    conditions.push(`d.assigned_to IS NULL`);
+  }
+  if (filters.q) {
+    params.push(`%${filters.q}%`);
+    conditions.push(
+      `(d.search_text ILIKE $${params.length} OR d.serial_no ILIKE $${params.length} OR d.claim_no ILIKE $${params.length} OR d.reg_no ILIKE $${params.length})`,
+    );
   }
   if (!filters.viewAll && filters.scopeUserId) {
     params.push(filters.scopeUserId);
@@ -881,6 +953,14 @@ export async function updateDatasheetRecord(
       | 'assigned_by'
       | 'assigned_at'
       | 'reopen_reason'
+      | 'date_of_instruction'
+      | 'client_insurer'
+      | 'form_types'
+      | 'cancel_reason'
+      | 'query_reason'
+      | 'reviewed_by'
+      | 'reviewed_at'
+      | 'search_text'
     >
   >,
 ): Promise<DbDatasheet | null> {
@@ -1044,6 +1124,8 @@ export function isDuplicateSerialError(err: unknown): boolean {
 export async function insertDatasheetRecord(
   row: Omit<DbDatasheet, 'id' | 'created_at' | 'updated_at'>,
 ): Promise<DbDatasheet> {
+  await ensureDb();
+
   if (useJson && jsonStore) {
     const id = jsonStore.datasheets.length ? Math.max(...jsonStore.datasheets.map((d) => d.id)) + 1 : 1;
     const now = new Date().toISOString();
@@ -1053,11 +1135,46 @@ export async function insertDatasheetRecord(
     return created;
   }
 
-  const result = await query<DbDatasheet>(
+  if (useSupabase) {
+    const client = getSupabaseAdmin();
+    if (!client) throw new Error('Supabase client not initialized');
+    const { data, error } = await client
+      .from('datasheets')
+      .insert({
+        serial_no: row.serial_no,
+        status: row.status,
+        created_by: row.created_by,
+        updated_by: row.updated_by,
+        form_data: row.form_data,
+        claim_no: row.claim_no,
+        reg_no: row.reg_no,
+        assigned_to: row.assigned_to,
+        assigned_by: row.assigned_by,
+        assigned_at: row.assigned_at,
+        reopen_reason: row.reopen_reason,
+        date_of_instruction: row.date_of_instruction ?? null,
+        client_insurer: row.client_insurer ?? null,
+        form_types: row.form_types ?? null,
+        cancel_reason: row.cancel_reason ?? null,
+        query_reason: row.query_reason ?? null,
+        reviewed_by: row.reviewed_by ?? null,
+        reviewed_at: row.reviewed_at ?? null,
+        search_text: row.search_text ?? null,
+      })
+      .select()
+      .single();
+    if (error) throw new Error(error.message);
+    return data as DbDatasheet;
+  }
+
+  if (!pool) throw new Error(dbConfigError());
+  const result = await pool.query<DbDatasheet>(
     `INSERT INTO datasheets (
       serial_no, status, created_by, updated_by, form_data, claim_no, reg_no,
-      assigned_to, assigned_by, assigned_at, reopen_reason
-    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNING *`,
+      assigned_to, assigned_by, assigned_at, reopen_reason,
+      date_of_instruction, client_insurer, form_types, cancel_reason, query_reason,
+      reviewed_by, reviewed_at, search_text
+    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19) RETURNING *`,
     [
       row.serial_no,
       row.status,
@@ -1070,7 +1187,42 @@ export async function insertDatasheetRecord(
       row.assigned_by,
       row.assigned_at,
       row.reopen_reason,
+      row.date_of_instruction ?? null,
+      row.client_insurer ?? null,
+      row.form_types ?? null,
+      row.cancel_reason ?? null,
+      row.query_reason ?? null,
+      row.reviewed_by ?? null,
+      row.reviewed_at ?? null,
+      row.search_text ?? null,
     ],
   );
   return result.rows[0];
+}
+
+export async function listAllAuditsForDatasheets(ids: number[]): Promise<DbAuditEntry[]> {
+  if (!ids.length) return [];
+  await ensureDb();
+
+  if (useJson && jsonStore) {
+    return jsonStore.audits.filter((a) => ids.includes(a.datasheet_id));
+  }
+
+  if (useSupabase) {
+    const client = getSupabaseAdmin();
+    if (!client) throw new Error('Supabase client not initialized');
+    const { data, error } = await client
+      .from('datasheet_audit')
+      .select('*')
+      .in('datasheet_id', ids);
+    if (error) throw new Error(error.message);
+    return (data || []) as DbAuditEntry[];
+  }
+
+  if (!pool) throw new Error(dbConfigError());
+  const result = await pool.query<DbAuditEntry>(
+    `SELECT * FROM datasheet_audit WHERE datasheet_id = ANY($1::int[])`,
+    [ids],
+  );
+  return result.rows;
 }

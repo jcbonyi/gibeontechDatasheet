@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { listDatasheets } from '@/lib/db';
+import { listAllAuditsForDatasheets, listDatasheets } from '@/lib/db';
 import { getAuthUser, unauthorized } from '@/lib/api';
 import { handleRouteError } from '@/lib/routeErrors';
 import { canViewAllDatasheets } from '@/lib/permissions';
@@ -17,20 +17,23 @@ export async function GET(req: NextRequest) {
       ? Number(searchParams.get('assessorId'))
       : undefined;
     const status = searchParams.get('status') || undefined;
+    const insurer = searchParams.get('insurer') || undefined;
 
     const rows = await listDatasheets({
       status,
       assessorId,
       fromDate,
       toDate,
+      insurer,
       viewAll: canViewAllDatasheets(user.role),
       scopeUserId: canViewAllDatasheets(user.role) ? undefined : user.id,
     });
 
     const items = rows.map(toListItem);
-    const summary = buildAnalyticsSummary(items);
+    const audits = await listAllAuditsForDatasheets(items.map((r) => r.id));
+    const summary = buildAnalyticsSummary(items, audits);
 
-    return NextResponse.json({ summary, filters: { fromDate, toDate, assessorId, status } });
+    return NextResponse.json({ summary, filters: { fromDate, toDate, assessorId, status, insurer } });
   } catch (err) {
     return handleRouteError(err, 'GET /api/analytics');
   }

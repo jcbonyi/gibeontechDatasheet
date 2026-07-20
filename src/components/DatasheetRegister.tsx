@@ -2,15 +2,20 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import {
+  ArrowRight,
+  Ban,
   Columns3,
   Download,
   FileSpreadsheet,
   FileText,
+  Inbox,
   List,
   Plus,
   Search,
   UserPlus,
+  X,
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { canAssignDatasheet, canViewAllDatasheets } from '@/lib/permissions';
@@ -22,6 +27,8 @@ import {
   STATUS_LABELS,
 } from '@/lib/status';
 import type { AgeBand } from '@/lib/tracking';
+import { SLA_DAYS } from '@/lib/tracking';
+import { CANCEL_REASONS, SAVED_VIEWS, type SavedViewId } from '@/lib/opsConfig';
 import { StatusBadge } from '@/components/StatusBadge';
 
 interface DatasheetRow {
@@ -30,6 +37,8 @@ interface DatasheetRow {
   status: DatasheetStatus;
   claim_no: string | null;
   reg_no: string | null;
+  created_by: number | null;
+  assigned_to: number | null;
   created_by_name?: string | null;
   assigned_to_name?: string | null;
   created_at: string;
@@ -49,37 +58,58 @@ interface AssessorOption {
 
 type StatusFilter = '' | DatasheetStatus;
 type ViewMode = 'board' | 'list';
+type SavedView = (typeof SAVED_VIEWS)[number];
+type ScopeFilter = '' | 'mine' | 'unallocated' | 'overdue' | 'all';
+
+const PIPELINE_STEPS: { status: DatasheetStatus; label: string }[] = [
+  { status: 'instructed', label: 'Instructed' },
+  { status: 'allocated', label: 'Allocated' },
+  { status: 'in_progress', label: 'In Progress' },
+  { status: 'report_issued', label: 'Report Issued' },
+];
+
+function pillClass(active: boolean): string {
+  return `nav-pill ${active ? 'nav-pill-active' : 'nav-pill-idle bg-white border border-slate-200'}`;
+}
 
 export function DatasheetRegister() {
   const { user } = useAuth();
+  const router = useRouter();
   const [datasheets, setDatasheets] = useState<DatasheetRow[]>([]);
   const [assessors, setAssessors] = useState<AssessorOption[]>([]);
   const [loading, setLoading] = useState(true);
+  const [q, setQ] = useState('');
   const [claimNo, setClaimNo] = useState('');
   const [regNo, setRegNo] = useState('');
   const [assessorId, setAssessorId] = useState('');
   const [fromDate, setFromDate] = useState('');
   const [toDate, setToDate] = useState('');
   const [status, setStatus] = useState<StatusFilter>('');
+  const [scope, setScope] = useState<ScopeFilter>('');
+  const [selectedView, setSelectedView] = useState<SavedViewId | ''>('');
   const [view, setView] = useState<ViewMode>('board');
   const [openOnly, setOpenOnly] = useState(true);
   const [assigningId, setAssigningId] = useState<number | null>(null);
   const [assignTo, setAssignTo] = useState('');
+  const [inlineAssign, setInlineAssign] = useState<Record<number, string>>({});
   const [actionMessage, setActionMessage] = useState('');
+  const [dragOverTarget, setDragOverTarget] = useState<string>('');
 
   const canAssign = user ? canAssignDatasheet(user) : false;
   const viewAll = user ? canViewAllDatasheets(user.role) : false;
 
   const filterParams = useCallback(() => {
     const params = new URLSearchParams();
+    if (q) params.set('q', q);
     if (claimNo) params.set('claimNo', claimNo);
     if (regNo) params.set('regNo', regNo);
     if (status) params.set('status', status);
     if (assessorId) params.set('assessorId', assessorId);
     if (fromDate) params.set('fromDate', fromDate);
     if (toDate) params.set('toDate', toDate);
+    if (scope === 'unallocated') params.set('unallocated', '1');
     return params;
-  }, [assessorId, claimNo, fromDate, regNo, status, toDate]);
+  }, [assessorId, claimNo, fromDate, q, regNo, scope, status, toDate]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -101,12 +131,40 @@ export function DatasheetRegister() {
       .then((d) => setAssessors(d.assessors || []));
   }, [canAssign]);
 
+  const clearSelectedView = () => setSelectedView('');
+
+  const applySavedView = (savedView: SavedView) => {
+    setSelectedView(savedView.id);
+    setOpenOnly(savedView.openOnly);
+    setStatus('status' in savedView && savedView.status ? savedView.status : '');
+    setScope('scope' in savedView && savedView.scope ? savedView.scope : '');
+  };
+
+  const resetFilters = () => {
+    setQ('');
+    setClaimNo('');
+    setRegNo('');
+    setAssessorId('');
+    setFromDate('');
+    setToDate('');
+    setStatus('');
+    setScope('');
+    setSelectedView('');
+    setOpenOnly(true);
+  };
+
   const filtered = useMemo(() => {
     let rows = datasheets;
     if (status) rows = rows.filter((d) => d.status === status);
+    if (scope === 'mine' && user) {
+      rows = rows.filter((d) => d.assigned_to === user.id || d.created_by === user.id);
+    }
+    if (scope === 'overdue') {
+      rows = rows.filter((d) => d.is_overdue);
+    }
     if (openOnly) rows = rows.filter((d) => isOpenStatus(d.status));
     return rows;
-  }, [datasheets, openOnly, status]);
+  }, [datasheets, openOnly, scope, status, user]);
 
   const stats = useMemo(() => {
     const counts = Object.fromEntries(DATASHEET_STATUSES.map((s) => [s, 0])) as Record<
@@ -133,14 +191,14 @@ export function DatasheetRegister() {
     [filtered],
   );
 
-  const handleAssign = async (id: number) => {
-    if (!assignTo) return;
+  const handleAssign = async (id: number, assignedTo: string) => {
+    if (!assignedTo) return;
     const res = await fetch(`/api/datasheets/${id}/assign`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ assignedTo: Number(assignTo) }),
+      body: JSON.stringify({ assignedTo: Number(assignedTo) }),
     });
-    const data = await res.json();
+    const data = await res.json().catch(() => ({}));
     if (!res.ok) {
       setActionMessage(data.message || 'Assignment failed');
       return;
@@ -148,7 +206,94 @@ export function DatasheetRegister() {
     setActionMessage('Task allocated to assessor');
     setAssigningId(null);
     setAssignTo('');
+    setInlineAssign((prev) => {
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    });
     load();
+  };
+
+  const handleDrop = async (targetStatus: DatasheetStatus, e: React.DragEvent) => {
+    e.preventDefault();
+    setDragOverTarget('');
+    const raw = e.dataTransfer.getData('application/json');
+    if (!raw) return;
+
+    let payload: { id: number; status: DatasheetStatus };
+    try {
+      payload = JSON.parse(raw);
+    } catch {
+      return;
+    }
+    const { id, status: fromStatus } = payload;
+    if (!id || fromStatus === targetStatus) return;
+
+    let reason = '';
+    let cancelReason = '';
+
+    if (targetStatus === 'queried') {
+      const input = window.prompt(
+        `Why is "${STATUS_LABELS[fromStatus]}" being queried? (minimum 3 characters)`,
+      );
+      if (input === null) return;
+      if (input.trim().length < 3) {
+        alert('A query reason of at least 3 characters is required.');
+        return;
+      }
+      reason = input.trim();
+    }
+
+    if (targetStatus === 'cancelled') {
+      const optionsList = CANCEL_REASONS.map((r) => `${r.value} — ${r.label}`).join('\n');
+      const codeInput = window.prompt(
+        `Select a cancellation reason. Type one of the following codes exactly:\n\n${optionsList}`,
+      );
+      if (codeInput === null) return;
+      const code = codeInput.trim();
+      if (!CANCEL_REASONS.some((r) => r.value === code)) {
+        alert('That is not a valid cancellation reason code. Please try again.');
+        return;
+      }
+      cancelReason = code;
+      if (code === 'other') {
+        const notes = window.prompt('Please describe the cancellation reason (minimum 3 characters):');
+        if (notes === null || notes.trim().length < 3) {
+          alert('A description of at least 3 characters is required when selecting "Other".');
+          return;
+        }
+        reason = notes.trim();
+      }
+    }
+
+    const res = await fetch(`/api/datasheets/${id}/review`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status: targetStatus, reason, cancelReason }),
+    });
+
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      const message =
+        data.message ||
+        (res.status === 403
+          ? 'You do not have permission to move this task to that status.'
+          : 'Failed to update the task status.');
+      alert(message);
+      window.location.reload();
+      return;
+    }
+
+    setActionMessage(`Task moved to ${STATUS_LABELS[targetStatus]}`);
+    load();
+  };
+
+  const handleDragStart = (row: DatasheetRow, e: React.DragEvent) => {
+    e.dataTransfer.setData(
+      'application/json',
+      JSON.stringify({ id: row.id, status: row.status }),
+    );
+    e.dataTransfer.effectAllowed = 'move';
   };
 
   const exportReport = (format: string, pack = 'register') => {
@@ -158,42 +303,85 @@ export function DatasheetRegister() {
     window.location.href = `/api/reports/export?${params}`;
   };
 
-  const pipelineCards: {
-    key: StatusFilter | 'open';
-    label: string;
-    value: number;
-    valueClass: string;
-  }[] = [
-    { key: 'open', label: 'Open tasks', value: stats.open, valueClass: 'text-brand-700' },
-    {
-      key: 'instructed',
-      label: 'Instructed',
-      value: stats.counts.instructed || 0,
-      valueClass: 'text-slate-700',
-    },
-    {
-      key: 'in_progress',
-      label: 'In progress',
-      value: stats.counts.in_progress || 0,
-      valueClass: 'text-sky-700',
-    },
-    {
-      key: 'pending_review',
-      label: 'Pending review',
-      value: stats.counts.pending_review || 0,
-      valueClass: 'text-amber-700',
-    },
-    { key: 'open', label: 'Overdue', value: stats.overdue, valueClass: 'text-red-700' },
-  ];
+  const hasAnyTasks = datasheets.length > 0;
 
-  // Deduplicate open key for overdue card - use separate handling
-  const cards = [
-    pipelineCards[0],
-    pipelineCards[1],
-    pipelineCards[2],
-    pipelineCards[3],
-    { key: 'overdue' as const, label: 'Overdue', value: stats.overdue, valueClass: 'text-red-700' },
-  ];
+  const renderCard = (row: DatasheetRow) => {
+    const inlineValue = inlineAssign[row.id] || '';
+    return (
+      <div
+        key={row.id}
+        draggable
+        onDragStart={(e) => handleDragStart(row, e)}
+        onClick={() => router.push(`/datasheets/${row.id}`)}
+        role="button"
+        tabIndex={0}
+        data-shortcut="task-card"
+        className={`task-card cursor-pointer ${row.is_overdue ? 'task-card-overdue' : ''}`}
+      >
+        <div className="flex items-start justify-between gap-2">
+          <p className="font-semibold text-brand-800">{row.serial_no}</p>
+          {row.age_days != null && (
+            <span
+              className={`shrink-0 rounded-full px-1.5 py-0.5 text-[11px] font-semibold ${
+                row.age_days > SLA_DAYS ? 'bg-red-100 text-red-700' : 'bg-slate-100 text-slate-500'
+              }`}
+            >
+              {row.age_days}d
+            </span>
+          )}
+        </div>
+        <p className="mt-1 truncate text-sm text-slate-700">
+          {row.claim_no || 'No claim no.'} · {row.reg_no || '—'}
+        </p>
+        <p className="mt-0.5 truncate text-xs text-slate-500">{row.client_insurer || 'No insurer'}</p>
+        {row.form_types?.length > 0 && (
+          <p className="mt-1.5 truncate text-[10px] font-medium uppercase tracking-wide text-slate-400">
+            {row.form_types.join(' · ')}
+          </p>
+        )}
+        <p className="mt-1.5 text-xs text-slate-500">
+          DOI: {row.date_of_instruction || '—'}
+        </p>
+        <p className="mt-0.5 text-xs text-slate-500">
+          {row.assigned_to_name || row.created_by_name || 'Unassigned'}
+        </p>
+        {canAssign && isOpenStatus(row.status) && (
+          <div
+            className="mt-2 flex items-center gap-1"
+            onClick={(e) => e.stopPropagation()}
+            onMouseDown={(e) => e.stopPropagation()}
+            onDragStart={(e) => e.stopPropagation()}
+          >
+            <select
+              value={inlineValue}
+              onChange={(e) =>
+                setInlineAssign((prev) => ({ ...prev, [row.id]: e.target.value }))
+              }
+              className="form-input py-1 text-[11px]"
+              data-shortcut="inline-allocate-select"
+            >
+              <option value="">Allocate to…</option>
+              {assessors.map((a) => (
+                <option key={a.id} value={a.id}>
+                  {a.name}
+                </option>
+              ))}
+            </select>
+            <button
+              type="button"
+              onClick={() => handleAssign(row.id, inlineValue)}
+              disabled={!inlineValue}
+              className="inline-flex items-center gap-1 rounded-lg bg-accent-600 px-2 py-1 text-[11px] font-semibold text-white disabled:cursor-not-allowed disabled:opacity-40"
+              data-shortcut="inline-allocate-save"
+            >
+              <UserPlus className="h-3 w-3" />
+              Go
+            </button>
+          </div>
+        )}
+      </div>
+    );
+  };
 
   return (
     <div>
@@ -211,6 +399,7 @@ export function DatasheetRegister() {
             <button
               type="button"
               onClick={() => setView('board')}
+              data-shortcut="view-board"
               className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium ${
                 view === 'board' ? 'bg-brand-600 text-white' : 'text-slate-600 hover:bg-slate-50'
               }`}
@@ -221,6 +410,7 @@ export function DatasheetRegister() {
             <button
               type="button"
               onClick={() => setView('list')}
+              data-shortcut="view-list"
               className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium ${
                 view === 'list' ? 'bg-brand-600 text-white' : 'text-slate-600 hover:bg-slate-50'
               }`}
@@ -229,19 +419,34 @@ export function DatasheetRegister() {
               List
             </button>
           </div>
-          <button type="button" onClick={() => exportReport('xlsx', 'register')} className="btn-secondary">
+          <button
+            type="button"
+            onClick={() => exportReport('xlsx', 'register')}
+            className="btn-secondary"
+            data-shortcut="export-excel"
+          >
             <FileSpreadsheet className="h-4 w-4" />
             Excel
           </button>
-          <button type="button" onClick={() => exportReport('pdf', 'analytics-pdf')} className="btn-secondary">
+          <button
+            type="button"
+            onClick={() => exportReport('pdf', 'analytics-pdf')}
+            className="btn-secondary"
+            data-shortcut="export-pdf"
+          >
             <FileText className="h-4 w-4" />
             PDF
           </button>
-          <button type="button" onClick={() => exportReport('csv')} className="btn-secondary">
+          <button
+            type="button"
+            onClick={() => exportReport('csv')}
+            className="btn-secondary"
+            data-shortcut="export-csv"
+          >
             <Download className="h-4 w-4" />
             CSV
           </button>
-          <Link href="/datasheets/new" className="btn-primary">
+          <Link href="/datasheets/new" className="btn-primary" data-shortcut="new-instruction">
             <Plus className="h-4 w-4" />
             New instruction
           </Link>
@@ -251,48 +456,81 @@ export function DatasheetRegister() {
       {stats.overdue > 0 && (
         <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
           <strong>{stats.overdue}</strong> open task{stats.overdue === 1 ? '' : 's'} overdue
-          (more than 7 days since Date of Instruction).
+          (more than {SLA_DAYS} days since Date of Instruction).
         </div>
       )}
 
-      <div className="mb-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
-        {cards.map((card) => {
-          const isActive =
-            (card.key === 'open' && openOnly && !status) ||
-            (card.key !== 'open' && card.key !== 'overdue' && status === card.key);
-          return (
-            <button
-              key={card.label}
-              type="button"
-              onClick={() => {
-                if (card.key === 'open' || card.key === 'overdue') {
-                  setOpenOnly(true);
-                  setStatus('');
-                } else {
-                  setOpenOnly(false);
-                  setStatus(card.key);
-                }
-              }}
-              className={`section-card w-full py-3.5 text-left transition hover:shadow-md ${
-                isActive ? 'ring-2 ring-brand-500 border-brand-200 bg-brand-50/50' : ''
-              }`}
-            >
-              <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">{card.label}</p>
-              <p className={`mt-0.5 text-2xl font-bold ${card.valueClass}`}>{card.value}</p>
-            </button>
-          );
-        })}
+      <div className="mb-4 flex flex-wrap items-center gap-2">
+        {SAVED_VIEWS.map((savedView) => (
+          <button
+            key={savedView.id}
+            type="button"
+            onClick={() => applySavedView(savedView)}
+            data-shortcut={`saved-view-${savedView.id}`}
+            className={pillClass(selectedView === savedView.id)}
+          >
+            {savedView.label}
+          </button>
+        ))}
+        {(selectedView || status || scope || claimNo || regNo || assessorId || fromDate || toDate || q) && (
+          <button
+            type="button"
+            onClick={resetFilters}
+            className="inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium text-slate-500 hover:bg-slate-100"
+          >
+            <X className="h-3.5 w-3.5" />
+            Clear
+          </button>
+        )}
       </div>
 
       <div className="section-card mb-5">
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          <input value={claimNo} onChange={(e) => setClaimNo(e.target.value)} placeholder="Claim No." className="form-input" />
-          <input value={regNo} onChange={(e) => setRegNo(e.target.value)} placeholder="Reg. No." className="form-input" />
+          <div className="relative sm:col-span-2 lg:col-span-1">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+            <input
+              value={q}
+              onChange={(e) => {
+                setQ(e.target.value);
+                clearSelectedView();
+              }}
+              placeholder="Search serial, claim, reg, insurer…"
+              className="form-input pl-9"
+              data-shortcut="search-input"
+            />
+          </div>
+          <input
+            value={claimNo}
+            onChange={(e) => {
+              setClaimNo(e.target.value);
+              clearSelectedView();
+            }}
+            placeholder="Claim No."
+            className="form-input"
+          />
+          <input
+            value={regNo}
+            onChange={(e) => {
+              setRegNo(e.target.value);
+              clearSelectedView();
+            }}
+            placeholder="Reg. No."
+            className="form-input"
+          />
           {viewAll && (
-            <select value={assessorId} onChange={(e) => setAssessorId(e.target.value)} className="form-input">
+            <select
+              value={assessorId}
+              onChange={(e) => {
+                setAssessorId(e.target.value);
+                clearSelectedView();
+              }}
+              className="form-input"
+            >
               <option value="">All assessors</option>
               {assessors.map((a) => (
-                <option key={a.id} value={a.id}>{a.name}</option>
+                <option key={a.id} value={a.id}>
+                  {a.name}
+                </option>
               ))}
             </select>
           )}
@@ -301,16 +539,38 @@ export function DatasheetRegister() {
             onChange={(e) => {
               setStatus(e.target.value as StatusFilter);
               setOpenOnly(false);
+              setScope('');
+              clearSelectedView();
             }}
             className="form-input"
           >
             <option value="">All statuses</option>
             {DATASHEET_STATUSES.map((s) => (
-              <option key={s} value={s}>{STATUS_LABELS[s]}</option>
+              <option key={s} value={s}>
+                {STATUS_LABELS[s]}
+              </option>
             ))}
           </select>
-          <input type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)} className="form-input" title="From" />
-          <input type="date" value={toDate} onChange={(e) => setToDate(e.target.value)} className="form-input" title="To" />
+          <input
+            type="date"
+            value={fromDate}
+            onChange={(e) => {
+              setFromDate(e.target.value);
+              clearSelectedView();
+            }}
+            className="form-input"
+            title="From"
+          />
+          <input
+            type="date"
+            value={toDate}
+            onChange={(e) => {
+              setToDate(e.target.value);
+              clearSelectedView();
+            }}
+            className="form-input"
+            title="To"
+          />
           <label className="flex items-center gap-2 text-sm text-slate-600">
             <input
               type="checkbox"
@@ -318,12 +578,14 @@ export function DatasheetRegister() {
               onChange={(e) => {
                 setOpenOnly(e.target.checked);
                 if (e.target.checked) setStatus('');
+                clearSelectedView();
               }}
               className="rounded border-slate-300 text-brand-600"
+              data-shortcut="toggle-open-only"
             />
             Open tasks only
           </label>
-          <button type="button" onClick={load} className="btn-secondary">
+          <button type="button" onClick={load} className="btn-secondary" data-shortcut="search-submit">
             <Search className="h-4 w-4" />
             Search
           </button>
@@ -333,11 +595,51 @@ export function DatasheetRegister() {
 
       {loading ? (
         <div className="section-card text-sm text-slate-500">Loading tasks…</div>
+      ) : !hasAnyTasks ? (
+        <div className="section-card">
+          <div className="mx-auto max-w-2xl py-6 text-center">
+            <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-brand-50">
+              <Inbox className="h-7 w-7 text-brand-500" />
+            </div>
+            <h2 className="mt-4 text-lg font-bold text-slate-900">No assessment tasks yet</h2>
+            <p className="mt-2 text-sm text-slate-500">
+              Once a claim is instructed, it moves through a simple pipeline until the report is
+              issued to the client. Create your first instruction to get started.
+            </p>
+            <div className="mt-5 flex flex-wrap items-center justify-center gap-2 text-xs font-semibold text-slate-500">
+              {PIPELINE_STEPS.map((step, i) => (
+                <span key={step.status} className="flex items-center gap-2">
+                  <span className="rounded-full bg-slate-100 px-3 py-1.5 text-slate-700">
+                    {step.label}
+                  </span>
+                  {i < PIPELINE_STEPS.length - 1 && <ArrowRight className="h-3.5 w-3.5 text-slate-300" />}
+                </span>
+              ))}
+            </div>
+            <Link href="/datasheets/new" className="btn-primary mt-6 inline-flex" data-shortcut="empty-new-instruction">
+              <Plus className="h-4 w-4" />
+              Create your first instruction
+            </Link>
+          </div>
+        </div>
       ) : view === 'board' ? (
         <div className="task-board -mx-4 overflow-x-auto px-4 pb-2 sm:mx-0 sm:px-0">
           <div className="flex min-w-max gap-3">
             {boardColumns.map((col) => (
-              <div key={col.status} className="task-column">
+              <div
+                key={col.status}
+                data-shortcut="board-column"
+                data-status={col.status}
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  setDragOverTarget(col.status);
+                }}
+                onDragLeave={() => setDragOverTarget((cur) => (cur === col.status ? '' : cur))}
+                onDrop={(e) => handleDrop(col.status, e)}
+                className={`task-column ${
+                  dragOverTarget === col.status ? 'ring-2 ring-brand-400 bg-brand-50/60' : ''
+                }`}
+              >
                 <div className="mb-3 flex items-center justify-between gap-2">
                   <h3 className="text-xs font-bold uppercase tracking-wide text-slate-600">{col.label}</h3>
                   <span className="rounded-full bg-slate-200/80 px-2 py-0.5 text-[11px] font-semibold text-slate-700">
@@ -350,45 +652,35 @@ export function DatasheetRegister() {
                       No tasks
                     </p>
                   )}
-                  {col.items.map((row) => (
-                    <Link
-                      key={row.id}
-                      href={`/datasheets/${row.id}`}
-                      className={`task-card block ${row.is_overdue ? 'task-card-overdue' : ''}`}
-                    >
-                      <div className="flex items-start justify-between gap-2">
-                        <p className="font-semibold text-brand-800">{row.serial_no}</p>
-                        {row.age_days != null && (
-                          <span className={`text-[11px] font-semibold ${row.is_overdue ? 'text-red-600' : 'text-slate-500'}`}>
-                            {row.age_days}d
-                          </span>
-                        )}
-                      </div>
-                      <p className="mt-1 truncate text-sm text-slate-700">
-                        {row.claim_no || 'No claim no.'} · {row.reg_no || '—'}
-                      </p>
-                      <p className="mt-0.5 truncate text-xs text-slate-500">
-                        {row.client_insurer || 'No insurer'}
-                      </p>
-                      {row.form_types?.length > 0 && (
-                        <p className="mt-1.5 truncate text-[10px] font-medium uppercase tracking-wide text-slate-400">
-                          {row.form_types.join(' · ')}
-                        </p>
-                      )}
-                      <p className="mt-2 text-xs text-slate-500">
-                        {row.assigned_to_name || row.created_by_name || 'Unassigned'}
-                      </p>
-                    </Link>
-                  ))}
+                  {col.items.map((row) => renderCard(row))}
                 </div>
               </div>
             ))}
+
+            <div
+              data-shortcut="cancel-drop-zone"
+              onDragOver={(e) => {
+                e.preventDefault();
+                setDragOverTarget('cancelled');
+              }}
+              onDragLeave={() => setDragOverTarget((cur) => (cur === 'cancelled' ? '' : cur))}
+              onDrop={(e) => handleDrop('cancelled', e)}
+              className={`task-column flex w-40 shrink-0 flex-col items-center justify-center border-2 border-dashed text-center ${
+                dragOverTarget === 'cancelled'
+                  ? 'border-red-400 bg-red-50 ring-2 ring-red-300'
+                  : 'border-slate-300 bg-slate-50/60'
+              }`}
+            >
+              <Ban className="h-6 w-6 text-red-400" />
+              <p className="mt-2 text-xs font-semibold text-slate-500">Drop here to cancel</p>
+              <p className="mt-1 text-[11px] text-slate-400">Requires a cancellation reason</p>
+            </div>
           </div>
         </div>
       ) : (
         <div className="section-card overflow-x-auto">
           {filtered.length === 0 ? (
-            <p className="py-8 text-center text-sm text-slate-500">No tasks found.</p>
+            <p className="py-8 text-center text-sm text-slate-500">No tasks match your filters.</p>
           ) : (
             <table className="data-table">
               <thead>
@@ -410,41 +702,69 @@ export function DatasheetRegister() {
                     <td className="font-semibold text-brand-800">{row.serial_no}</td>
                     <td>{row.claim_no || '—'}</td>
                     <td>{row.reg_no || '—'}</td>
-                    <td><StatusBadge status={row.status} /></td>
+                    <td>
+                      <StatusBadge status={row.status} />
+                    </td>
                     <td className="text-slate-600">{row.date_of_instruction || '—'}</td>
                     <td>
                       {row.age_days != null ? (
                         <span className={row.is_overdue ? 'font-semibold text-red-700' : ''}>
                           {row.age_days}d{row.is_overdue ? ' · overdue' : ''}
                         </span>
-                      ) : '—'}
+                      ) : (
+                        '—'
+                      )}
                     </td>
                     {viewAll && <td>{row.assigned_to_name || row.created_by_name || '—'}</td>}
                     <td className="text-slate-500">{new Date(row.updated_at).toLocaleString()}</td>
                     <td>
                       <div className="flex flex-wrap items-center gap-2">
-                        <Link href={`/datasheets/${row.id}`} className="font-medium text-brand-600 hover:text-brand-800">
+                        <Link
+                          href={`/datasheets/${row.id}`}
+                          className="font-medium text-brand-600 hover:text-brand-800"
+                        >
                           Open
                         </Link>
-                        {canAssign && (
-                          assigningId === row.id ? (
+                        {canAssign &&
+                          (assigningId === row.id ? (
                             <div className="flex items-center gap-1">
-                              <select value={assignTo} onChange={(e) => setAssignTo(e.target.value)} className="form-input py-1 text-xs">
+                              <select
+                                value={assignTo}
+                                onChange={(e) => setAssignTo(e.target.value)}
+                                className="form-input py-1 text-xs"
+                              >
                                 <option value="">Select assessor</option>
                                 {assessors.map((a) => (
-                                  <option key={a.id} value={a.id}>{a.name}</option>
+                                  <option key={a.id} value={a.id}>
+                                    {a.name}
+                                  </option>
                                 ))}
                               </select>
-                              <button type="button" onClick={() => handleAssign(row.id)} className="btn-secondary px-2 py-1 text-xs">Save</button>
-                              <button type="button" onClick={() => setAssigningId(null)} className="text-xs text-slate-500">Cancel</button>
+                              <button
+                                type="button"
+                                onClick={() => handleAssign(row.id, assignTo)}
+                                className="btn-secondary px-2 py-1 text-xs"
+                              >
+                                Save
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setAssigningId(null)}
+                                className="text-xs text-slate-500"
+                              >
+                                Cancel
+                              </button>
                             </div>
                           ) : (
-                            <button type="button" onClick={() => setAssigningId(row.id)} className="inline-flex items-center gap-1 text-xs font-medium text-accent-700">
+                            <button
+                              type="button"
+                              onClick={() => setAssigningId(row.id)}
+                              className="inline-flex items-center gap-1 text-xs font-medium text-accent-700"
+                            >
                               <UserPlus className="h-3.5 w-3.5" />
                               Allocate
                             </button>
-                          )
-                        )}
+                          ))}
                       </div>
                     </td>
                   </tr>

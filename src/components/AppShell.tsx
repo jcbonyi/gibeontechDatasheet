@@ -5,8 +5,10 @@ import { usePathname } from 'next/navigation';
 import {
   BarChart3,
   ClipboardList,
+  FileBarChart2,
   LogOut,
   Plus,
+  Smartphone,
   Users,
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
@@ -14,17 +16,22 @@ import { Letterhead } from '@/components/Letterhead';
 import { COMPANY } from '@/constants/brand';
 import { canManageUsers } from '@/lib/permissions';
 import { ROLE_LABELS } from '@/types/datasheet';
+import { KeyboardShortcuts } from '@/components/KeyboardShortcuts';
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const { user, logout } = useAuth();
   const pathname = usePathname();
 
   const isHome = pathname === '/analytics' || pathname === '/';
-  const isTasks = pathname === '/datasheets' || pathname.startsWith('/datasheets/');
+  const isTasks =
+    pathname === '/datasheets' ||
+    (pathname.startsWith('/datasheets/') && !pathname.startsWith('/datasheets/new'));
+  const isReports = pathname.startsWith('/reports');
   const isAdmin = pathname.startsWith('/admin');
 
   return (
     <div className="min-h-screen">
+      <KeyboardShortcuts />
       <header className="no-print sticky top-0 z-30 border-b border-white/60 bg-white/90 shadow-sm backdrop-blur-md">
         <div className="mx-auto max-w-7xl px-4 py-3 sm:px-6 sm:py-4">
           <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
@@ -43,20 +50,34 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               <Link
                 href="/analytics"
                 className={`nav-pill ${isHome ? 'nav-pill-active' : 'nav-pill-idle'}`}
+                title="Alt+H"
               >
                 <BarChart3 className="h-4 w-4" />
                 Home
               </Link>
               <Link
                 href="/datasheets"
-                className={`nav-pill ${isTasks && !pathname.startsWith('/datasheets/new') ? 'nav-pill-active' : 'nav-pill-idle'}`}
+                className={`nav-pill ${isTasks ? 'nav-pill-active' : 'nav-pill-idle'}`}
+                title="Alt+T"
               >
                 <ClipboardList className="h-4 w-4" />
                 Tasks
               </Link>
-              <Link href="/datasheets/new" className="nav-pill nav-pill-idle">
+              <Link
+                href="/reports"
+                className={`nav-pill ${isReports ? 'nav-pill-active' : 'nav-pill-idle'}`}
+                title="Alt+R"
+              >
+                <FileBarChart2 className="h-4 w-4" />
+                Reports
+              </Link>
+              <Link href="/datasheets/new" className="nav-pill nav-pill-idle" title="Alt+N">
                 <Plus className="h-4 w-4" />
                 New
+              </Link>
+              <Link href="/mobile" className="nav-pill nav-pill-idle" title="Alt+M">
+                <Smartphone className="h-4 w-4" />
+                Field
               </Link>
               {user && canManageUsers(user) && (
                 <Link
@@ -85,6 +106,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
       <footer className="no-print border-t border-brand-100/80 bg-white/70 py-5 text-center text-xs text-slate-500 backdrop-blur-sm">
         © {new Date().getFullYear()} {COMPANY.name}
+        <span className="mx-2 hidden sm:inline">·</span>
+        <span className="mt-1 block sm:mt-0 sm:inline">
+          Alt+H Home · Alt+T Tasks · Alt+N New · Alt+R Reports · Alt+M Field
+        </span>
       </footer>
     </div>
   );
