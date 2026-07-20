@@ -7,10 +7,12 @@ import { AppShell } from '@/components/AppShell';
 import { DatasheetForm } from '@/components/DatasheetForm';
 import { PageHeader } from '@/components/PageHeader';
 import { StatusBadge } from '@/components/StatusBadge';
-import { DatasheetFormData, mergeFormData, type DatasheetStatus } from '@/types/datasheet';
+import { DatasheetFormData, mergeFormData, ROLE_LABELS, type DatasheetStatus, type UserRole } from '@/types/datasheet';
 import { STATUS_DESCRIPTIONS, STATUS_LABELS } from '@/lib/status';
 import { useAuth } from '@/context/AuthContext';
 import { fetchJson } from '@/lib/fetchJson';
+import { canAssignDatasheet, canDeleteDatasheet } from '@/lib/permissions';
+import { Trash2, UserPlus } from 'lucide-react';
 
 interface WorkflowAction {
   status: DatasheetStatus;
@@ -52,6 +54,11 @@ export default function EditDatasheetPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [actionMessage, setActionMessage] = useState('');
+  const [assignees, setAssignees] = useState<{ id: number; name: string; role: UserRole; roleLabel?: string }[]>([]);
+  const [assignTo, setAssignTo] = useState('');
+
+  const canDelete = user ? canDeleteDatasheet(user) : false;
+  const canAssign = user ? canAssignDatasheet(user) : false;
 
   const reload = () => {
     fetchJson<{
@@ -83,6 +90,13 @@ export default function EditDatasheetPage() {
   useEffect(() => {
     reload();
   }, [id, user?.name]);
+
+  useEffect(() => {
+    if (!canAssign) return;
+    fetch('/api/users/assessors')
+      .then((r) => r.json())
+      .then((d) => setAssignees(d.assessors || []));
+  }, [canAssign]);
 
   const handleSave = async (data: DatasheetFormData, newStatus: DatasheetStatus) => {
     const { ok, data: result } = await fetchJson<{
@@ -242,7 +256,75 @@ export default function EditDatasheetPage() {
                 Duplicate task
               </button>
             )}
-            {actions.length === 0 && !permissions?.canReopen && !permissions?.canDuplicate && (
+            {(permissions?.canAssign || canAssign) && (
+              <div className="flex flex-wrap items-center gap-2">
+                <select
+                  value={assignTo}
+                  onChange={(e) => setAssignTo(e.target.value)}
+                  className="form-input py-2 text-sm"
+                >
+                  <option value="">Allocate to Assessor / Principal Officer…</option>
+                  {assignees.map((a) => (
+                    <option key={a.id} value={a.id}>
+                      {a.name} · {a.roleLabel || ROLE_LABELS[a.role]}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  className="btn-secondary"
+                  disabled={!assignTo}
+                  onClick={async () => {
+                    const res = await fetch(`/api/datasheets/${id}/assign`, {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ assignedTo: Number(assignTo) }),
+                    });
+                    const data = await res.json();
+                    if (!res.ok) {
+                      setActionMessage(data.message || 'Allocation failed');
+                      return;
+                    }
+                    setActionMessage('Task allocated');
+                    setAssignTo('');
+                    reload();
+                  }}
+                >
+                  <UserPlus className="h-4 w-4" />
+                  Allocate
+                </button>
+              </div>
+            )}
+            {(permissions?.canDelete || canDelete) && (
+              <button
+                type="button"
+                className="btn-secondary text-red-700 hover:bg-red-50"
+                onClick={async () => {
+                  if (
+                    !confirm(
+                      `Permanently delete ${serialNo || 'this task'}? This cannot be undone.`,
+                    )
+                  ) {
+                    return;
+                  }
+                  const res = await fetch(`/api/datasheets/${id}`, { method: 'DELETE' });
+                  const data = await res.json().catch(() => ({}));
+                  if (!res.ok) {
+                    setActionMessage(data.message || 'Delete failed');
+                    return;
+                  }
+                  router.push('/datasheets');
+                }}
+              >
+                <Trash2 className="h-4 w-4" />
+                Delete task
+              </button>
+            )}
+            {actions.length === 0 &&
+              !permissions?.canReopen &&
+              !permissions?.canDuplicate &&
+              !permissions?.canDelete &&
+              !permissions?.canAssign && (
               <p className="text-sm text-slate-500">No workflow actions available for your role at this stage.</p>
             )}
           </div>

@@ -14,12 +14,13 @@ import {
   List,
   Plus,
   Search,
+  Trash2,
   UserPlus,
   X,
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
-import { canAssignDatasheet, canViewAllDatasheets } from '@/lib/permissions';
-import { ROLE_LABELS, type DatasheetStatus } from '@/types/datasheet';
+import { canAssignDatasheet, canDeleteDatasheet, canViewAllDatasheets } from '@/lib/permissions';
+import { ROLE_LABELS, type DatasheetStatus, type UserRole } from '@/types/datasheet';
 import {
   BOARD_STATUSES,
   DATASHEET_STATUSES,
@@ -54,6 +55,8 @@ interface DatasheetRow {
 interface AssessorOption {
   id: number;
   name: string;
+  role?: UserRole;
+  roleLabel?: string;
 }
 
 type StatusFilter = '' | DatasheetStatus;
@@ -96,7 +99,9 @@ export function DatasheetRegister() {
   const [dragOverTarget, setDragOverTarget] = useState<string>('');
 
   const canAssign = user ? canAssignDatasheet(user) : false;
+  const canDelete = user ? canDeleteDatasheet(user) : false;
   const viewAll = user ? canViewAllDatasheets(user.role) : false;
+  const isAdmin = user?.role === 'Admin';
 
   const filterParams = useCallback(() => {
     const params = new URLSearchParams();
@@ -203,7 +208,7 @@ export function DatasheetRegister() {
       setActionMessage(data.message || 'Assignment failed');
       return;
     }
-    setActionMessage('Task allocated to assessor');
+    setActionMessage('Task allocated');
     setAssigningId(null);
     setAssignTo('');
     setInlineAssign((prev) => {
@@ -213,6 +218,24 @@ export function DatasheetRegister() {
     });
     load();
   };
+
+  const handleDelete = async (id: number, serial: string) => {
+    if (!confirm(`Permanently delete ${serial}? This cannot be undone.`)) return;
+    const res = await fetch(`/api/datasheets/${id}`, { method: 'DELETE' });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      setActionMessage((data as { message?: string }).message || 'Delete failed');
+      return;
+    }
+    setActionMessage(`Deleted ${serial}`);
+    load();
+  };
+
+  const assigneeOptionLabel = (a: AssessorOption) =>
+    `${a.name} · ${a.roleLabel || (a.role ? ROLE_LABELS[a.role] : 'Assignee')}`;
+
+  const canAllocateRow = (status: DatasheetStatus) =>
+    canAssign && (isAdmin || isOpenStatus(status));
 
   const handleDrop = async (targetStatus: DatasheetStatus, e: React.DragEvent) => {
     e.preventDefault();
@@ -345,7 +368,7 @@ export function DatasheetRegister() {
         <p className="mt-0.5 text-xs text-slate-500">
           {row.assigned_to_name || row.created_by_name || 'Unassigned'}
         </p>
-        {canAssign && isOpenStatus(row.status) && (
+        {canAllocateRow(row.status) && (
           <div
             className="mt-2 flex items-center gap-1"
             onClick={(e) => e.stopPropagation()}
@@ -363,7 +386,7 @@ export function DatasheetRegister() {
               <option value="">Allocate to…</option>
               {assessors.map((a) => (
                 <option key={a.id} value={a.id}>
-                  {a.name}
+                  {assigneeOptionLabel(a)}
                 </option>
               ))}
             </select>
@@ -378,6 +401,21 @@ export function DatasheetRegister() {
               Go
             </button>
           </div>
+        )}
+        {canDelete && (
+          <button
+            type="button"
+            className="mt-2 inline-flex items-center gap-1 text-[11px] font-medium text-red-600 hover:text-red-800"
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              handleDelete(row.id, row.serial_no);
+            }}
+            onMouseDown={(e) => e.stopPropagation()}
+          >
+            <Trash2 className="h-3 w-3" />
+            Delete
+          </button>
         )}
       </div>
     );
@@ -526,10 +564,10 @@ export function DatasheetRegister() {
               }}
               className="form-input"
             >
-              <option value="">All assessors</option>
+              <option value="">All assignees</option>
               {assessors.map((a) => (
                 <option key={a.id} value={a.id}>
-                  {a.name}
+                  {assigneeOptionLabel(a)}
                 </option>
               ))}
             </select>
@@ -725,7 +763,7 @@ export function DatasheetRegister() {
                         >
                           Open
                         </Link>
-                        {canAssign &&
+                        {canAllocateRow(row.status) &&
                           (assigningId === row.id ? (
                             <div className="flex items-center gap-1">
                               <select
@@ -733,10 +771,10 @@ export function DatasheetRegister() {
                                 onChange={(e) => setAssignTo(e.target.value)}
                                 className="form-input py-1 text-xs"
                               >
-                                <option value="">Select assessor</option>
+                                <option value="">Select assignee</option>
                                 {assessors.map((a) => (
                                   <option key={a.id} value={a.id}>
-                                    {a.name}
+                                    {assigneeOptionLabel(a)}
                                   </option>
                                 ))}
                               </select>
@@ -765,6 +803,16 @@ export function DatasheetRegister() {
                               Allocate
                             </button>
                           ))}
+                        {canDelete && (
+                          <button
+                            type="button"
+                            onClick={() => handleDelete(row.id, row.serial_no)}
+                            className="inline-flex items-center gap-1 text-xs font-medium text-red-600 hover:text-red-800"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                            Delete
+                          </button>
+                        )}
                       </div>
                     </td>
                   </tr>

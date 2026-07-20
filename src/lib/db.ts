@@ -1017,6 +1017,39 @@ export async function getActiveUsers(role?: UserRole): Promise<Omit<DbUser, 'pas
   return users;
 }
 
+/** Users who can be allocated assessment tasks. */
+export async function getAssignableUsers(): Promise<Omit<DbUser, 'password_hash'>[]> {
+  const users = await getActiveUsers();
+  return users.filter((u) => u.role === 'Assessor' || u.role === 'PrincipalOfficer');
+}
+
+export async function deleteDatasheetRecord(id: number): Promise<boolean> {
+  await ensureDb();
+
+  if (useJson && jsonStore) {
+    const before = jsonStore.datasheets.length;
+    jsonStore.datasheets = jsonStore.datasheets.filter((d) => d.id !== id);
+    jsonStore.audits = jsonStore.audits.filter((a) => a.datasheet_id !== id);
+    saveJsonStore();
+    return jsonStore.datasheets.length < before;
+  }
+
+  if (useSupabase) {
+    const client = getSupabaseAdmin();
+    if (!client) throw new Error('Supabase client not initialized');
+    const { error, count } = await client
+      .from('datasheets')
+      .delete({ count: 'exact' })
+      .eq('id', id);
+    if (error) throw new Error(error.message);
+    return (count || 0) > 0;
+  }
+
+  if (!pool) throw new Error(dbConfigError());
+  const result = await pool.query('DELETE FROM datasheets WHERE id = $1', [id]);
+  return (result.rowCount || 0) > 0;
+}
+
 export async function updateUserRecord(
   id: number,
   patch: Partial<Pick<DbUser, 'name' | 'email' | 'role' | 'is_active' | 'password_hash'>>,

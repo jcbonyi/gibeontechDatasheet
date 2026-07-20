@@ -5,7 +5,7 @@ import {
   getActiveUsers,
   logDatasheetAudit,
   updateDatasheetRecord,
-  query,
+  deleteDatasheetRecord,
 } from '@/lib/db';
 import { applySeenBy, canViewDatasheet } from '@/lib/auth';
 import { forbidden, getAuthUser, unauthorized } from '@/lib/api';
@@ -122,7 +122,11 @@ export async function DELETE(
       return NextResponse.json({ message: 'Not found' }, { status: 404 });
     }
 
-    await query('DELETE FROM datasheets WHERE id = $1', [Number(id)]);
+    await logDatasheetAudit(datasheet.id, user.id, user.name, 'deleted', {
+      serial: datasheet.serial_no,
+      status: datasheet.status,
+    });
+    await deleteDatasheetRecord(Number(id));
     return NextResponse.json({ ok: true });
   } catch (err) {
     return handleRouteError(err, 'DELETE /api/datasheets/[id]');

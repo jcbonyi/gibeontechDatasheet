@@ -1,13 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import {
-  getActiveUsers,
+  getAssignableUsers,
   getDatasheetById,
   logDatasheetAudit,
   updateDatasheetRecord,
 } from '@/lib/db';
 import { forbidden, badRequest, getAuthUser, unauthorized } from '@/lib/api';
 import { handleRouteError } from '@/lib/routeErrors';
-import { canAssignDatasheet, canViewDatasheet } from '@/lib/permissions';
+import { canAssignDatasheet, canViewDatasheet, isSuperUser } from '@/lib/permissions';
+import { isOpenStatus, normalizeStatus } from '@/lib/status';
 
 export async function POST(
   req: NextRequest,
@@ -25,26 +26,34 @@ export async function POST(
     }
     if (!canViewDatasheet(user, datasheet)) return forbidden();
 
+    const status = normalizeStatus(datasheet.status);
+    if (!isSuperUser(user.role) && !isOpenStatus(status)) {
+      return badRequest('Only open tasks can be allocated');
+    }
+
     const body = await req.json();
     const assignedTo = Number(body.assignedTo);
     if (!assignedTo) return badRequest('assignedTo is required');
 
-    const assessors = await getActiveUsers('Assessor');
-    const target = assessors.find((a) => a.id === assignedTo);
-    if (!target) return badRequest('Assignee must be an active Assessor');
+    const assignable = await getAssignableUsers();
+    const target = assignable.find((a) => a.id === assignedTo);
+    if (!target) {
+      return badRequest('Assignee must be an active Assessor or Principal Officer');
+    }
 
     const updated = await updateDatasheetRecord(Number(id), {
       assigned_to: assignedTo,
       assigned_by: user.id,
       assigned_at: new Date().toISOString(),
       updated_by: user.id,
-      ...(datasheet.status === 'instructed' ? { status: 'allocated' as const } : {}),
+      ...(status === 'instructed' ? { status: 'allocated' as const } : {}),
     });
 
     await logDatasheetAudit(datasheet.id, user.id, user.name, 'assigned', {
       assignedTo: target.name,
       assignedToId: assignedTo,
-      status: datasheet.status === 'instructed' ? 'allocated' : datasheet.status,
+      assignedRole: target.role,
+      status: status === 'instructed' ? 'allocated' : status,
     });
 
     return NextResponse.json({ datasheet: updated });

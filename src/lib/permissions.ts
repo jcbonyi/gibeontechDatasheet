@@ -181,7 +181,8 @@ export function getDatasheetPermissions(user: AuthUser, ds: DatasheetRecord) {
     canView: canViewDatasheet(user, ds),
     canEdit: canEditDatasheet(user, ds),
     canDelete: canDeleteDatasheet(user),
-    canAssign: canAssignDatasheet(user) && isOpenStatus(status),
+    canAssign:
+      canAssignDatasheet(user) && (isSuperUser(user.role) || isOpenStatus(status)),
     canReopen: canReopenDatasheet(user) && (isTerminalStatus(status) || status === 'report_issued' || status === 'on_hold'),
     canMarkUnderReview: canReviewDatasheet(user) && status === 'pending_review',
     canApprove: canIssueReport(user) && (status === 'pending_review' || status === 'under_review'),
