@@ -79,9 +79,13 @@ export async function PATCH(
 
     const body = await req.json();
     let formData = (body.formData ?? datasheet.form_data) as Record<string, unknown>;
-    const status = (body.status ?? datasheet.status) as DatasheetStatus;
+    let status = (body.status ?? datasheet.status) as DatasheetStatus;
+    // Legacy aliases from older clients
+    if ((status as string) === 'draft') status = 'instructed';
+    if ((status as string) === 'submitted') status = 'pending_review';
+    if ((status as string) === 'approved') status = 'report_issued';
 
-    if (status === 'approved' && user.role === 'OperationsManager') {
+    if ((status === 'report_issued' || status === 'closed') && user.role === 'OperationsManager') {
       return forbidden();
     }
 

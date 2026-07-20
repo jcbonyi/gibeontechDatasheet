@@ -1,9 +1,10 @@
 import ExcelJS from 'exceljs';
 import type { AnalyticsSummary, DatasheetListItem } from '@/lib/tracking';
 import { AGE_BAND_LABELS, SLA_DAYS } from '@/lib/tracking';
+import { STATUS_LABELS } from '@/lib/status';
 
 function statusLabel(status: string) {
-  return status.replace(/_/g, ' ');
+  return STATUS_LABELS[status as keyof typeof STATUS_LABELS] || status.replace(/_/g, ' ');
 }
 
 export async function buildRegisterWorkbook(rows: DatasheetListItem[]): Promise<Buffer> {

@@ -119,9 +119,9 @@ export function SimpleLineChart({
         <span className="inline-flex items-center gap-1.5">
           <span className="h-2 w-2 rounded-full bg-brand-700" /> Created
         </span>
-        <span className="inline-flex items-center gap-1.5">
-          <span className="h-2 w-2 rounded-full bg-accent-600" /> Approved
-        </span>
+          <span className="inline-flex items-center gap-1.5">
+            <span className="h-2 w-2 rounded-full bg-accent-600" /> Reports issued
+          </span>
       </div>
     </div>
   );

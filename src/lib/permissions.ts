@@ -1,5 +1,14 @@
-import type { DatasheetStatus, UserRole } from '@/types/datasheet';
 import type { AuthUser } from '@/lib/auth';
+import type { DatasheetStatus, UserRole } from '@/types/datasheet';
+import {
+  ASSESSOR_EDITABLE_STATUSES,
+  getAvailableTransitions,
+  isOpenStatus,
+  isTerminalStatus,
+  normalizeStatus,
+  STATUS_LABELS,
+  type StatusAction,
+} from '@/lib/status';
 
 export const ROLE_LABELS: Record<UserRole, string> = {
   Admin: 'Admin',
@@ -19,7 +28,7 @@ export interface DatasheetRecord {
   id?: number;
   created_by: number | null;
   assigned_to: number | null;
-  status: DatasheetStatus;
+  status: DatasheetStatus | string;
 }
 
 export function isSuperUser(role: UserRole): boolean {
@@ -36,15 +45,19 @@ export function canViewDatasheet(user: AuthUser, ds: DatasheetRecord): boolean {
 }
 
 export function canEditDatasheet(user: AuthUser, ds: DatasheetRecord): boolean {
-  if (isSuperUser(user.role) || user.role === 'PrincipalOfficer') return true;
+  const status = normalizeStatus(ds.status);
+
+  if (isSuperUser(user.role) || user.role === 'PrincipalOfficer') {
+    return status !== 'closed' && status !== 'cancelled' && status !== 'report_issued';
+  }
 
   if (user.role === 'OperationsManager') {
-    return ds.status !== 'approved';
+    return !isTerminalStatus(status);
   }
 
   if (user.role === 'Assessor') {
     const involved = ds.created_by === user.id || ds.assigned_to === user.id;
-    return involved && ds.status === 'draft';
+    return involved && ASSESSOR_EDITABLE_STATUSES.includes(status);
   }
 
   return false;
@@ -70,12 +83,70 @@ export function canReviewDatasheet(user: AuthUser): boolean {
   return user.role === 'Admin' || user.role === 'PrincipalOfficer' || user.role === 'OperationsManager';
 }
 
-export function canApproveDatasheet(user: AuthUser): boolean {
+export function canIssueReport(user: AuthUser): boolean {
   return user.role === 'Admin' || user.role === 'PrincipalOfficer';
+}
+
+/** @deprecated Use canIssueReport */
+export function canApproveDatasheet(user: AuthUser): boolean {
+  return canIssueReport(user);
 }
 
 export function canDuplicateDatasheet(user: AuthUser): boolean {
   return true;
+}
+
+export function canTransitionStatus(
+  user: AuthUser,
+  ds: DatasheetRecord,
+  next: DatasheetStatus,
+): boolean {
+  const from = normalizeStatus(ds.status);
+  const to = normalizeStatus(next);
+  if (!getAvailableTransitions(from).includes(to)) return false;
+
+  if (to === 'report_issued' || to === 'closed') {
+    return canIssueReport(user) || (to === 'closed' && canReviewDatasheet(user) && from === 'report_issued');
+  }
+  if (to === 'cancelled') {
+    return canReviewDatasheet(user);
+  }
+  if (to === 'under_review' || to === 'pending_review') {
+    if (user.role === 'Assessor' && to === 'pending_review') {
+      return canEditDatasheet(user, ds) || ASSESSOR_EDITABLE_STATUSES.includes(from);
+    }
+    return canReviewDatasheet(user) || (user.role === 'Assessor' && to === 'pending_review');
+  }
+  if (user.role === 'Assessor') {
+    const assessorAllowed: DatasheetStatus[] = [
+      'in_progress',
+      'awaiting_documents',
+      'pending_review',
+    ];
+    return assessorAllowed.includes(to) && (ds.created_by === user.id || ds.assigned_to === user.id);
+  }
+  return canReviewDatasheet(user) || canAssignDatasheet(user);
+}
+
+export function getWorkflowActions(user: AuthUser, ds: DatasheetRecord): StatusAction[] {
+  const from = normalizeStatus(ds.status);
+  const next = getAvailableTransitions(from);
+  const actions: StatusAction[] = [];
+
+  for (const status of next) {
+    if (!canTransitionStatus(user, ds, status)) continue;
+    let variant: StatusAction['variant'] = 'secondary';
+    if (status === 'report_issued' || status === 'pending_review') variant = 'primary';
+    if (status === 'cancelled') variant = 'danger';
+    actions.push({
+      status,
+      label: STATUS_LABELS[status],
+      roles: [user.role],
+      variant,
+    });
+  }
+
+  return actions;
 }
 
 export function creatableRoles(actorRole: UserRole): UserRole[] {
@@ -105,14 +176,17 @@ export function canAssignRole(actorRole: UserRole, newRole: UserRole): boolean {
 }
 
 export function getDatasheetPermissions(user: AuthUser, ds: DatasheetRecord) {
+  const status = normalizeStatus(ds.status);
   return {
     canView: canViewDatasheet(user, ds),
     canEdit: canEditDatasheet(user, ds),
     canDelete: canDeleteDatasheet(user),
-    canAssign: canAssignDatasheet(user),
-    canReopen: canReopenDatasheet(user) && ds.status !== 'draft',
-    canMarkUnderReview: canReviewDatasheet(user) && ds.status === 'submitted',
-    canApprove: canApproveDatasheet(user) && (ds.status === 'submitted' || ds.status === 'under_review'),
+    canAssign: canAssignDatasheet(user) && isOpenStatus(status),
+    canReopen: canReopenDatasheet(user) && (isTerminalStatus(status) || status === 'report_issued' || status === 'on_hold'),
+    canMarkUnderReview: canReviewDatasheet(user) && status === 'pending_review',
+    canApprove: canIssueReport(user) && (status === 'pending_review' || status === 'under_review'),
+    canIssueReport: canIssueReport(user) && (status === 'pending_review' || status === 'under_review'),
     canDuplicate: canViewDatasheet(user, ds),
+    workflowActions: getWorkflowActions(user, { ...ds, status }),
   };
 }

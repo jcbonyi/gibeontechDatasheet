@@ -36,7 +36,7 @@ export async function POST(
       try {
         datasheet = await insertDatasheetRecord({
           serial_no: serialNo,
-          status: 'draft',
+          status: 'instructed',
           created_by: user.id,
           updated_by: user.id,
           form_data: formData,

@@ -2,6 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import { Pool, type QueryResult, type QueryResultRow } from 'pg';
 import type { DatasheetStatus, UserRole } from '@/types/datasheet';
+import { DATASHEET_STATUSES, normalizeStatus } from '@/lib/status';
 import { getSupabaseAdmin } from '@/lib/supabase';
 
 export interface DbUser {
@@ -90,7 +91,7 @@ function loadJsonStore(): JsonStore {
         assigned_by: d.assigned_by ?? null,
         assigned_at: d.assigned_at ?? null,
         reopen_reason: d.reopen_reason ?? null,
-        status: d.status || 'draft',
+        status: normalizeStatus(d.status || 'instructed'),
       })),
       audits: parsed.audits || [],
       serialCounter: parsed.serialCounter || 0,
@@ -201,7 +202,12 @@ async function initPostgres(): Promise<void> {
     CREATE TABLE IF NOT EXISTS datasheets (
       id SERIAL PRIMARY KEY,
       serial_no TEXT UNIQUE NOT NULL,
-      status TEXT NOT NULL CHECK (status IN ('draft', 'submitted', 'under_review', 'approved')),
+      status TEXT NOT NULL CHECK (status IN (
+        'instructed', 'allocated', 'in_progress', 'awaiting_documents',
+        'pending_review', 'under_review', 'queried', 'report_issued',
+        'on_hold', 'closed', 'cancelled',
+        'draft', 'submitted', 'approved'
+      )),
       created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
       updated_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
       assigned_to INTEGER REFERENCES users(id) ON DELETE SET NULL,
@@ -227,6 +233,20 @@ async function initPostgres(): Promise<void> {
   `);
   await pool.query(`
     ALTER TABLE datasheets ADD COLUMN IF NOT EXISTS reopen_reason TEXT;
+  `);
+
+  // Migrate legacy statuses + refresh check constraint
+  await pool.query(`UPDATE datasheets SET status = 'instructed' WHERE status = 'draft'`);
+  await pool.query(`UPDATE datasheets SET status = 'pending_review' WHERE status = 'submitted'`);
+  await pool.query(`UPDATE datasheets SET status = 'report_issued' WHERE status = 'approved'`);
+  await pool.query(`ALTER TABLE datasheets DROP CONSTRAINT IF EXISTS datasheets_status_check`);
+  await pool.query(`
+    ALTER TABLE datasheets ADD CONSTRAINT datasheets_status_check
+      CHECK (status IN (
+        'instructed', 'allocated', 'in_progress', 'awaiting_documents',
+        'pending_review', 'under_review', 'queried', 'report_issued',
+        'on_hold', 'closed', 'cancelled'
+      ))
   `);
 
   await pool.query(`
@@ -479,13 +499,7 @@ async function supabaseQuery<T extends QueryResultRow>(
         'id, serial_no, status, created_by, assigned_to, assigned_by, claim_no, reg_no, created_at, updated_at, reopen_reason',
       );
 
-    const status = params.find(
-      (p) =>
-        p === 'draft' ||
-        p === 'submitted' ||
-        p === 'under_review' ||
-        p === 'approved',
-    );
+    const status = params.find((p) => typeof p === 'string' && (DATASHEET_STATUSES as string[]).includes(p));
     const claimNo = params.find((p) => typeof p === 'string' && String(p).includes('%'));
     const regNo = params.find(
       (p) => typeof p === 'string' && String(p).includes('%') && p !== claimNo,
@@ -617,13 +631,7 @@ function jsonQuery<T extends QueryResultRow>(text: string, params: unknown[]): Q
 
   if (sql.includes('from datasheets') && sql.includes('order by')) {
     let rows = [...store.datasheets];
-    const status = params.find(
-      (p) =>
-        p === 'draft' ||
-        p === 'submitted' ||
-        p === 'under_review' ||
-        p === 'approved',
-    );
+    const status = params.find((p) => typeof p === 'string' && (DATASHEET_STATUSES as string[]).includes(p));
     const claimNo = params.find((p) => typeof p === 'string' && String(p).includes('%'));
     const regNo = params.find(
       (p) => typeof p === 'string' && String(p).includes('%') && p !== claimNo,
@@ -662,6 +670,7 @@ function enrichDatasheetRows(rows: DbDatasheet[], users: DbUser[]): DbDatasheetL
   const userMap = new Map(users.map((u) => [u.id, u.name]));
   return rows.map((row) => ({
     ...row,
+    status: normalizeStatus(row.status),
     created_by_name: row.created_by ? userMap.get(row.created_by) || null : null,
     assigned_to_name: row.assigned_to ? userMap.get(row.assigned_to) || null : null,
   }));
@@ -975,7 +984,9 @@ export async function updateUserRecord(
 
 export async function getDatasheetById(id: number): Promise<DbDatasheet | null> {
   const result = await query<DbDatasheet>('SELECT * FROM datasheets WHERE id = $1', [id]);
-  return result.rows[0] || null;
+  const row = result.rows[0];
+  if (!row) return null;
+  return { ...row, status: normalizeStatus(row.status) };
 }
 
 function maxSerialSuffix(prefix: string, serials: string[]): number {

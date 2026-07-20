@@ -1,8 +1,8 @@
 export const COMPANY = {
   name: 'Gibeontech Loss Assessors & Valuers',
   shortName: 'GibeonTech',
-  tagline: 'Motor Claim Datasheet',
-  reportTitle: 'Datasheet',
+  tagline: 'Motor Assessment Tracker',
+  reportTitle: 'Assessment Task',
   address: {
     line1: 'Virdi House, 16 Butere Road, 1st Floor',
     line2: 'Industrial Area, Nairobi, Kenya',

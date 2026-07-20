@@ -1,11 +1,22 @@
-export type DatasheetStatus = 'draft' | 'submitted' | 'under_review' | 'approved';
+export type DatasheetStatus =
+  | 'instructed'
+  | 'allocated'
+  | 'in_progress'
+  | 'awaiting_documents'
+  | 'pending_review'
+  | 'under_review'
+  | 'queried'
+  | 'report_issued'
+  | 'on_hold'
+  | 'closed'
+  | 'cancelled';
 
-export const DATASHEET_STATUSES: DatasheetStatus[] = [
-  'draft',
-  'submitted',
-  'under_review',
-  'approved',
-];
+export {
+  DATASHEET_STATUSES,
+  STATUS_LABELS,
+  statusLabel,
+  normalizeStatus,
+} from '@/lib/status';
 
 export type UserRole = 'Admin' | 'PrincipalOfficer' | 'OperationsManager' | 'Assessor';
 

@@ -38,11 +38,13 @@ export async function POST(
       assigned_by: user.id,
       assigned_at: new Date().toISOString(),
       updated_by: user.id,
+      ...(datasheet.status === 'instructed' ? { status: 'allocated' as const } : {}),
     });
 
     await logDatasheetAudit(datasheet.id, user.id, user.name, 'assigned', {
       assignedTo: target.name,
       assignedToId: assignedTo,
+      status: datasheet.status === 'instructed' ? 'allocated' : datasheet.status,
     });
 
     return NextResponse.json({ datasheet: updated });

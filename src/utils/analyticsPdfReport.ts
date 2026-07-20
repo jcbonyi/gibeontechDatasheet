@@ -2,6 +2,7 @@ import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import type { AnalyticsSummary } from '@/lib/tracking';
 import { SLA_DAYS } from '@/lib/tracking';
+import { STATUS_LABELS } from '@/lib/status';
 import { COMPANY } from '@/constants/brand';
 
 const BRAND = { r: 63, g: 61, b: 153 };
@@ -71,7 +72,7 @@ export function buildAnalyticsReportDoc(
     startY: y + 2,
     margin: { left: ML, right: ML },
     head: [['Status', 'Count']],
-    body: summary.byStatus.map((r) => [r.status.replace(/_/g, ' '), String(r.count)]),
+    body: summary.byStatus.map((r) => [STATUS_LABELS[r.status] || r.status, String(r.count)]),
     styles: { fontSize: 8, cellPadding: 2 },
     headStyles: { fillColor: [BRAND.r, BRAND.g, BRAND.b] },
   });
@@ -136,7 +137,7 @@ export function buildAnalyticsReportDoc(
       r.serial_no,
       r.claim_no || '—',
       r.reg_no || '—',
-      r.status.replace(/_/g, ' '),
+      STATUS_LABELS[r.status] || r.status,
       r.date_of_instruction || '—',
       r.age_days != null ? String(r.age_days) : '—',
       r.assigned_to_name || '—',

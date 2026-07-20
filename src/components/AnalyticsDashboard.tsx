@@ -6,7 +6,9 @@ import { Download, FileSpreadsheet, FileText, RefreshCw, Search } from 'lucide-r
 import { useAuth } from '@/context/AuthContext';
 import { canViewAllDatasheets } from '@/lib/permissions';
 import { SLA_DAYS, type AnalyticsSummary } from '@/lib/tracking';
+import { STATUS_LABELS } from '@/lib/status';
 import { SimpleBarChart, SimpleHorizontalBars, SimpleLineChart } from '@/components/SimpleCharts';
+import { StatusBadge } from '@/components/StatusBadge';
 
 interface AssessorOption {
   id: number;
@@ -64,9 +66,9 @@ export function AnalyticsDashboard() {
     <div>
       <div className="mb-8 flex flex-wrap items-end justify-between gap-4">
         <div>
-          <h1 className="page-title">Analytics &amp; Tracking</h1>
+          <h1 className="page-title">Operations home</h1>
           <p className="page-subtitle">
-            Graphical dashboards and reports · ageing from Date of Instruction · SLA {SLA_DAYS} days
+            Portfolio tracking for assessments, inspections &amp; reports · ageing from Date of Instruction · SLA {SLA_DAYS} days
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -83,7 +85,7 @@ export function AnalyticsDashboard() {
             PDF report
           </button>
           <Link href="/datasheets" className="btn-primary">
-            Datasheet register
+            Open task board
           </Link>
         </div>
       </div>
@@ -117,14 +119,14 @@ export function AnalyticsDashboard() {
           <div className="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
             {[
               { label: 'Total', value: kpis?.total ?? 0, className: 'text-brand-700' },
-              { label: 'Open', value: kpis?.open ?? 0, className: 'text-sky-700' },
+              { label: 'Open tasks', value: kpis?.open ?? 0, className: 'text-sky-700' },
               { label: 'Overdue', value: kpis?.overdue ?? 0, className: 'text-red-700' },
               {
                 label: 'Avg open age',
                 value: kpis?.avgAgeDays != null ? `${kpis.avgAgeDays}d` : '—',
                 className: 'text-amber-700',
               },
-              { label: 'Approved', value: kpis?.approvedInPeriod ?? 0, className: 'text-violet-700' },
+              { label: 'Reports issued', value: kpis?.approvedInPeriod ?? 0, className: 'text-emerald-700' },
             ].map((card) => (
               <div key={card.label} className="section-card py-4">
                 <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">{card.label}</p>
@@ -135,12 +137,14 @@ export function AnalyticsDashboard() {
 
           <div className="mb-6 grid gap-6 lg:grid-cols-2">
             <div className="section-card">
-              <h2 className="mb-4 text-sm font-semibold text-brand-800">Status funnel</h2>
+              <h2 className="mb-4 text-sm font-semibold text-brand-800">Pipeline by status</h2>
               <SimpleBarChart
-                items={summary.byStatus.map((s) => ({
-                  label: s.status.replace('_', ' '),
-                  value: s.count,
-                }))}
+                items={summary.byStatus
+                  .filter((s) => s.count > 0)
+                  .map((s) => ({
+                    label: STATUS_LABELS[s.status],
+                    value: s.count,
+                  }))}
               />
             </div>
             <div className="section-card">
@@ -227,7 +231,7 @@ export function AnalyticsDashboard() {
                       <td>{row.claim_no || '—'}</td>
                       <td>{row.reg_no || '—'}</td>
                       <td>{row.client_insurer || '—'}</td>
-                      <td>{row.status.replace('_', ' ')}</td>
+                      <td><StatusBadge status={row.status} /></td>
                       <td>{row.date_of_instruction || '—'}</td>
                       <td>
                         <span

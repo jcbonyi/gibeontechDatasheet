@@ -18,7 +18,7 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    if (user) router.replace('/datasheets');
+    if (user) router.replace('/analytics');
   }, [user, router]);
 
   useEffect(() => {
@@ -41,11 +41,11 @@ export default function LoginPage() {
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.message || 'Bootstrap failed');
-        window.location.href = '/datasheets';
+        window.location.href = '/analytics';
         return;
       }
       await login(email, password);
-      router.replace('/datasheets');
+      router.replace('/analytics');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Login failed');
     } finally {
@@ -63,7 +63,7 @@ export default function LoginPage() {
         <p className="mt-1 text-sm text-slate-500">
           {needsBootstrap
             ? 'Set up the first administrator account to get started.'
-            : 'Sign in to capture and submit datasheets.'}
+            : 'Sign in to manage assessment tasks, inspections, and reports.'}
         </p>
 
         <form onSubmit={handleSubmit} className="mt-6 space-y-4">

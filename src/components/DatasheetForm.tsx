@@ -19,6 +19,7 @@ import {
   hasInspectionForm,
   type DatasheetStatus,
 } from '@/types/datasheet';
+import { ASSESSOR_EDITABLE_STATUSES, normalizeStatus, STATUS_LABELS } from '@/lib/status';
 import { EmbeddedInspectionForm } from '@/inspection/components/EmbeddedInspectionForm';
 import {
   BODY_TYPES,
@@ -52,11 +53,13 @@ export function DatasheetForm({
   initialData,
   datasheetId,
   serialNo,
-  status = 'draft',
+  status = 'instructed',
   readOnly,
   onSave,
 }: DatasheetFormProps) {
   const { user } = useAuth();
+  const currentStatus = normalizeStatus(status);
+  const canSubmitForReview = ASSESSOR_EDITABLE_STATUSES.includes(currentStatus);
   const [activeSection, setActiveSection] = useState('header');
   const [submitError, setSubmitError] = useState('');
   const [saveMessage, setSaveMessage] = useState('');
@@ -124,15 +127,15 @@ export function DatasheetForm({
     if (readOnly || !datasheetId) return;
     setIsSaving(true);
     try {
-      await onSave(getValues(), 'draft');
-      setSaveMessage('Draft saved');
+      await onSave(getValues(), currentStatus);
+      setSaveMessage('Progress saved');
       setTimeout(() => setSaveMessage(''), 2000);
     } catch {
       setSaveMessage('Auto-save failed');
     } finally {
       setIsSaving(false);
     }
-  }, [datasheetId, getValues, onSave, readOnly]);
+  }, [currentStatus, datasheetId, getValues, onSave, readOnly]);
 
   useEffect(() => {
     if (readOnly || !datasheetId) return;
@@ -172,7 +175,7 @@ export function DatasheetForm({
   const onSubmit = async (data: DatasheetFormData) => {
     setSubmitError('');
     try {
-      await onSave(data, 'submitted');
+      await onSave(data, 'pending_review');
     } catch (err) {
       setSubmitError(err instanceof Error ? err.message : 'Failed to submit');
     }
@@ -181,8 +184,12 @@ export function DatasheetForm({
   const onSaveDraft = async () => {
     setSubmitError('');
     try {
-      await onSave(getValues(), 'draft');
-      setSaveMessage('Draft saved');
+      const next =
+        currentStatus === 'instructed' || currentStatus === 'allocated'
+          ? 'in_progress'
+          : currentStatus;
+      await onSave(getValues(), next);
+      setSaveMessage('Progress saved');
     } catch (err) {
       setSubmitError(err instanceof Error ? err.message : 'Failed to save');
     }
@@ -651,16 +658,16 @@ export function DatasheetForm({
         <div className="form-action-bar flex flex-wrap gap-3">
           <Link href="/datasheets" className="btn-secondary">
             <ArrowLeft className="h-4 w-4" />
-            Dashboard
+            Back to tasks
           </Link>
           <button type="button" onClick={onSaveDraft} className="btn-secondary" disabled={isSubmitting}>
             <Save className="h-4 w-4" />
-            Save Draft
+            Save progress
           </button>
-          {status === 'draft' && (
+          {canSubmitForReview && (
             <button type="button" onClick={handleSubmit(onSubmit)} className="btn-primary" disabled={isSubmitting}>
               <Send className="h-4 w-4" />
-              {isSubmitting ? 'Submitting…' : isInspectionMode ? 'Submit Inspection' : 'Submit Datasheet'}
+              {isSubmitting ? 'Submitting…' : 'Submit for review'}
             </button>
           )}
           <button type="button" onClick={onExportPdf} className="btn-secondary">
@@ -682,15 +689,15 @@ export function DatasheetForm({
         <div className="form-action-bar flex flex-wrap gap-3">
           <Link href="/datasheets" className="btn-secondary">
             <ArrowLeft className="h-4 w-4" />
-            Dashboard
+            Back to tasks
           </Link>
           <button type="button" onClick={onExportPdf} className="btn-primary">
             <FileText className="h-4 w-4" />
             Export PDF
           </button>
-          {status === 'submitted' && (
-            <p className="mt-2 text-sm text-slate-500">This datasheet has been submitted.</p>
-          )}
+          <p className="w-full text-sm text-slate-500">
+            Status: {STATUS_LABELS[currentStatus]} — editing is locked for this stage.
+          </p>
         </div>
       )}
         </div>

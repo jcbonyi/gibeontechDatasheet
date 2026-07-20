@@ -1,4 +1,5 @@
 import type { DatasheetStatus, FormType } from '@/types/datasheet';
+import { DATASHEET_STATUSES, isOpenStatus, normalizeStatus } from '@/lib/status';
 import type { DbDatasheetListRow } from '@/lib/db';
 
 export type AgeBand = '0-3' | '4-7' | '8-14' | '15+' | 'unknown';
@@ -91,7 +92,7 @@ export function extractTrackingFields(
   const header = (formData?.header || {}) as { formTypes?: FormType[] };
   const dateOfInstruction = basic.dateOfInstruction?.trim() || null;
   const ageDays = calcAgeDays(dateOfInstruction, asOf);
-  const open = status !== 'approved';
+  const open = isOpenStatus(status);
 
   return {
     date_of_instruction: dateOfInstruction,
@@ -104,9 +105,10 @@ export function extractTrackingFields(
 }
 
 export function toListItem(row: DbDatasheetListRow): DatasheetListItem {
-  const tracking = extractTrackingFields(row.form_data, row.status);
+  const status = normalizeStatus(row.status);
+  const tracking = extractTrackingFields(row.form_data, status);
   const { form_data: _fd, ...rest } = row;
-  return { ...rest, ...tracking };
+  return { ...rest, status, ...tracking };
 }
 
 function avg(nums: number[]): number | null {
@@ -139,12 +141,12 @@ export function buildAnalyticsSummary(rows: DatasheetListItem[]): AnalyticsSumma
     const assessor = row.assigned_to_name || row.created_by_name || 'Unassigned';
     const a = byAssessorMap.get(assessor) || { total: 0, open: 0, overdue: 0, ages: [] };
     a.total += 1;
-    if (row.status !== 'approved') {
+    if (isOpenStatus(row.status)) {
       a.open += 1;
       open += 1;
       if (row.age_days !== null) openAges.push(row.age_days);
       a.ages.push(...(row.age_days !== null ? [row.age_days] : []));
-    } else {
+    } else if (row.status === 'report_issued' || row.status === 'closed') {
       approvedInPeriod += 1;
     }
     if (row.is_overdue) {
@@ -162,12 +164,12 @@ export function buildAnalyticsSummary(rows: DatasheetListItem[]): AnalyticsSumma
     const month = row.created_at.slice(0, 7);
     const vol = volumeMap.get(month) || { created: 0, approved: 0 };
     vol.created += 1;
-    if (row.status === 'approved') vol.approved += 1;
+    if (row.status === 'report_issued' || row.status === 'closed') vol.approved += 1;
     volumeMap.set(month, vol);
   }
 
   const agingQueue = rows
-    .filter((r) => r.status !== 'approved')
+    .filter((r) => isOpenStatus(r.status))
     .sort((a, b) => (b.age_days ?? -1) - (a.age_days ?? -1))
     .slice(0, 25)
     .map((r) => ({
@@ -191,9 +193,10 @@ export function buildAnalyticsSummary(rows: DatasheetListItem[]): AnalyticsSumma
       avgAgeDays: avg(openAges),
       approvedInPeriod,
     },
-    byStatus: (['draft', 'submitted', 'under_review', 'approved'] as DatasheetStatus[]).map(
-      (status) => ({ status, count: byStatusMap.get(status) || 0 }),
-    ),
+    byStatus: DATASHEET_STATUSES.map((status) => ({
+      status,
+      count: byStatusMap.get(status) || 0,
+    })),
     byAgeBand: AGE_BANDS.map((band) => ({
       band,
       label: AGE_BAND_LABELS[band],

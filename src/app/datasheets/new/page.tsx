@@ -32,8 +32,8 @@ export default function NewDatasheetPage() {
   return (
     <AuthGuard>
       <AppShell>
-        <PageHeader title="New Datasheet" subtitle="Capture motor claim assessment data" />
-        <DatasheetForm initialData={initialData} onSave={handleSave} />
+        <PageHeader title="New instruction" subtitle="Open a motor assessment, inspection, or re-inspection task" />
+        <DatasheetForm initialData={initialData} onSave={handleSave} status="instructed" />
       </AppShell>
     </AuthGuard>
   );

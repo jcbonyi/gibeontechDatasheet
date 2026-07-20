@@ -4,6 +4,7 @@ import { canViewDatasheet } from '@/lib/auth';
 import { forbidden, badRequest, getAuthUser, unauthorized } from '@/lib/api';
 import { handleRouteError } from '@/lib/routeErrors';
 import { canReopenDatasheet } from '@/lib/permissions';
+import { isTerminalStatus, normalizeStatus } from '@/lib/status';
 
 export async function POST(
   req: NextRequest,
@@ -20,8 +21,10 @@ export async function POST(
       return NextResponse.json({ message: 'Not found' }, { status: 404 });
     }
     if (!canViewDatasheet(user, datasheet)) return forbidden();
-    if (datasheet.status === 'draft') {
-      return badRequest('Only submitted, under review, or approved datasheets can be reopened');
+
+    const status = normalizeStatus(datasheet.status);
+    if (!isTerminalStatus(status) && status !== 'on_hold' && status !== 'report_issued') {
+      return badRequest('Only issued, closed, cancelled, or on-hold files can be reopened');
     }
 
     const body = await req.json();
@@ -29,7 +32,7 @@ export async function POST(
     if (!reason) return badRequest('Reopen reason is required');
 
     const updated = await updateDatasheetRecord(Number(id), {
-      status: 'draft',
+      status: 'queried',
       reopen_reason: reason,
       updated_by: user.id,
     });
@@ -37,6 +40,7 @@ export async function POST(
     await logDatasheetAudit(datasheet.id, user.id, user.name, 'reopened', {
       reason,
       previousStatus: datasheet.status,
+      newStatus: 'queried',
     });
 
     return NextResponse.json({ datasheet: updated });

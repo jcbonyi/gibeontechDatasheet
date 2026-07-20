@@ -3,7 +3,9 @@ import { getDatasheetById, logDatasheetAudit, updateDatasheetRecord } from '@/li
 import { canViewDatasheet } from '@/lib/auth';
 import { forbidden, badRequest, getAuthUser, unauthorized } from '@/lib/api';
 import { handleRouteError } from '@/lib/routeErrors';
-import { canReviewDatasheet, canApproveDatasheet } from '@/lib/permissions';
+import { canTransitionStatus } from '@/lib/permissions';
+import { DATASHEET_STATUSES, normalizeStatus, STATUS_LABELS } from '@/lib/status';
+import type { DatasheetStatus } from '@/types/datasheet';
 
 export async function PATCH(
   req: NextRequest,
@@ -21,35 +23,30 @@ export async function PATCH(
     if (!canViewDatasheet(user, datasheet)) return forbidden();
 
     const body = await req.json();
-    const action = String(body.action || '');
+    let nextStatus = String(body.status || body.action || '');
+    if (nextStatus === 'approve') nextStatus = 'report_issued';
 
-    if (action === 'under_review') {
-      if (!canReviewDatasheet(user)) return forbidden();
-      if (datasheet.status !== 'submitted') {
-        return badRequest('Only submitted datasheets can be marked under review');
-      }
-      const updated = await updateDatasheetRecord(Number(id), {
-        status: 'under_review',
-        updated_by: user.id,
-      });
-      await logDatasheetAudit(datasheet.id, user.id, user.name, 'under_review', {});
-      return NextResponse.json({ datasheet: updated });
+    if (!(DATASHEET_STATUSES as string[]).includes(nextStatus)) {
+      return badRequest('Invalid status transition');
     }
 
-    if (action === 'approve') {
-      if (!canApproveDatasheet(user)) return forbidden();
-      if (datasheet.status !== 'submitted' && datasheet.status !== 'under_review') {
-        return badRequest('Only submitted or under review datasheets can be approved');
-      }
-      const updated = await updateDatasheetRecord(Number(id), {
-        status: 'approved',
-        updated_by: user.id,
-      });
-      await logDatasheetAudit(datasheet.id, user.id, user.name, 'approved', {});
-      return NextResponse.json({ datasheet: updated });
+    const target = normalizeStatus(nextStatus as DatasheetStatus);
+    if (!canTransitionStatus(user, datasheet, target)) {
+      return forbidden();
     }
 
-    return badRequest('Invalid review action');
+    const updated = await updateDatasheetRecord(Number(id), {
+      status: target,
+      updated_by: user.id,
+    });
+
+    await logDatasheetAudit(datasheet.id, user.id, user.name, 'status_changed', {
+      from: datasheet.status,
+      to: target,
+      label: STATUS_LABELS[target],
+    });
+
+    return NextResponse.json({ datasheet: updated });
   } catch (err) {
     return handleRouteError(err, 'PATCH /api/datasheets/[id]/review');
   }

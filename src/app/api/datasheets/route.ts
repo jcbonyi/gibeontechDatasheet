@@ -58,7 +58,13 @@ export async function POST(req: NextRequest) {
 
     const body = await req.json();
     let formData = (body.formData || createDefaultFormData()) as Record<string, unknown>;
-    const status = (body.status === 'submitted' ? 'submitted' : 'draft') as DatasheetStatus;
+    const status = (
+      body.status === 'pending_review' || body.status === 'submitted'
+        ? 'pending_review'
+        : body.status === 'in_progress'
+          ? 'in_progress'
+          : 'instructed'
+    ) as DatasheetStatus;
     formData = applySeenBy(formData, user.name);
 
     const { claimNo, regNo } = extractSearchFields(formData);
