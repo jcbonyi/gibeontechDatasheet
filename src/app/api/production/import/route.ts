@@ -98,16 +98,22 @@ export async function POST(req: NextRequest) {
       } catch (err) {
         errors.push({
           row: row.rowNumber,
+          sheet: row.sheetName,
           message: err instanceof Error ? err.message : 'Failed to import row',
         });
       }
     }
 
     return NextResponse.json({
-      message: `Imported ${imported} of ${parsed.rows.length} rows`,
+      message: `Imported ${imported} of ${parsed.rows.length} rows` +
+        (parsed.sheetsImported.length
+          ? ` from ${parsed.sheetsImported.length} sheet(s): ${parsed.sheetsImported.join(', ')}`
+          : ''),
       imported,
       total: parsed.rows.length,
       failed: errors.length,
+      sheetsImported: parsed.sheetsImported,
+      sheetsSkipped: parsed.sheetsSkipped,
       errors: errors.slice(0, 50),
       warnings: warnings.slice(0, 50),
     });

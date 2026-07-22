@@ -158,15 +158,20 @@ export function ProductionRegister() {
       if (!res.ok) {
         const detail = (data.errors || [])
           .slice(0, 5)
-          .map((e: { row: number; message: string }) => `Row ${e.row}: ${e.message}`)
+          .map((e: { row: number; sheet?: string; message: string }) =>
+            `${e.sheet ? `[${e.sheet}] ` : ''}Row ${e.row}: ${e.message}`,
+          )
           .join('\n');
         setImportMessage(data.message || 'Import failed');
         if (detail) alert(`${data.message || 'Import failed'}\n\n${detail}`);
         return;
       }
       const warnCount = (data.warnings || []).length;
+      const skipped = (data.sheetsSkipped || []).length;
       setImportMessage(
-        `${data.message}${warnCount ? ` · ${warnCount} warning(s)` : ''}`,
+        `${data.message}${warnCount ? ` · ${warnCount} warning(s)` : ''}${
+          skipped ? ` · ${skipped} sheet(s) skipped` : ''
+        }`,
       );
       load();
     } finally {
@@ -231,12 +236,15 @@ export function ProductionRegister() {
       )}
 
       <div className="section-card mb-4 !py-3 text-xs text-slate-500">
-        Excel import expects headers:{' '}
+        Excel import reads <span className="font-semibold text-slate-700">every sheet</span> that
+        has headers:{' '}
         <span className="font-semibold text-slate-700">
           DATE · INSURER · REG NO · ASSIGNMENT · AMOUNT · WITHOUT VAT · DONE BY · SEEN BY ·
           INSTRUCTED BY
         </span>
-        . Missing insurers and Done/Seen staff names are created automatically. Instructed By is free text.
+        . Missing insurers and Done/Seen staff names are created automatically. Instructed By is
+        free text. Use the <span className="font-semibold text-slate-700">All</span> date preset to
+        see every month after import.
       </div>
 
       <div className="section-card mb-4 !py-4">
