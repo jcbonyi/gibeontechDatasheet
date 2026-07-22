@@ -39,6 +39,8 @@ export interface CycleTimeMetrics {
   sampleSizeIssued: number;
 }
 
+export type QueuePriority = 'critical' | 'overdue' | 'at_risk' | 'unassigned' | 'review' | 'normal';
+
 export interface AnalyticsSummary {
   kpis: {
     total: number;
@@ -48,6 +50,18 @@ export interface AnalyticsSummary {
     approvedInPeriod: number;
     slaCompliancePct: number | null;
     withinSla: number;
+  };
+  /** Counts that drive day-to-day management decisions */
+  decisions: {
+    unassigned: number;
+    atRisk: number;
+    overdueCritical: number;
+    pendingReview: number;
+    underReview: number;
+    awaitingDocuments: number;
+    queried: number;
+    onHold: number;
+    attentionTotal: number;
   };
   cycleTime: CycleTimeMetrics;
   byStatus: { status: DatasheetStatus; count: number }[];
@@ -74,8 +88,46 @@ export interface AnalyticsSummary {
     date_of_instruction: string | null;
     age_days: number | null;
     age_band: AgeBand;
+    is_overdue: boolean;
+    priority: QueuePriority;
   }[];
 }
+
+/** Days remaining before SLA breach — open tasks in this band need chasing. */
+export const AT_RISK_FROM_DAY = 5;
+
+export function queuePriorityFor(row: {
+  status: DatasheetStatus;
+  age_days: number | null;
+  is_overdue: boolean;
+  assigned_to_name?: string | null;
+}): QueuePriority {
+  const unassigned = !row.assigned_to_name;
+  if (row.is_overdue && (row.age_days ?? 0) >= 15) return 'critical';
+  if (row.is_overdue) return 'overdue';
+  if (unassigned && isOpenStatus(row.status)) return 'unassigned';
+  if (
+    row.age_days != null &&
+    row.age_days >= AT_RISK_FROM_DAY &&
+    row.age_days <= SLA_DAYS &&
+    isOpenStatus(row.status)
+  ) {
+    return 'at_risk';
+  }
+  if (row.status === 'pending_review' || row.status === 'under_review' || row.status === 'queried') {
+    return 'review';
+  }
+  return 'normal';
+}
+
+const PRIORITY_RANK: Record<QueuePriority, number> = {
+  critical: 0,
+  overdue: 1,
+  unassigned: 2,
+  at_risk: 3,
+  review: 4,
+  normal: 5,
+};
 
 function parseDateOnly(value: string | null | undefined): Date | null {
   if (!value || !/^\d{4}-\d{2}-\d{2}/.test(value)) return null;
@@ -234,12 +286,16 @@ export function buildAnalyticsSummary(
   let approvedInPeriod = 0;
   let withinSla = 0;
   let slaDenom = 0;
+  let unassigned = 0;
+  let atRisk = 0;
+  let overdueCritical = 0;
   const openAges: number[] = [];
 
   for (const row of rows) {
     byStatusMap.set(row.status, (byStatusMap.get(row.status) || 0) + 1);
     byAgeMap.set(row.age_band, (byAgeMap.get(row.age_band) || 0) + 1);
 
+    const isUnassigned = !row.assigned_to_name;
     const assessor = row.assigned_to_name || row.created_by_name || 'Unassigned';
     const a = byAssessorMap.get(assessor) || {
       total: 0,
@@ -254,8 +310,18 @@ export function buildAnalyticsSummary(
     if (isOpenStatus(row.status)) {
       a.open += 1;
       open += 1;
+      if (isUnassigned) unassigned += 1;
       if (row.age_days !== null) openAges.push(row.age_days);
       if (row.age_days !== null) a.ages.push(row.age_days);
+      if (
+        row.age_days != null &&
+        row.age_days >= AT_RISK_FROM_DAY &&
+        row.age_days <= SLA_DAYS &&
+        !row.is_overdue
+      ) {
+        atRisk += 1;
+      }
+      if (row.is_overdue && (row.age_days ?? 0) >= 15) overdueCritical += 1;
     } else if (row.status === 'report_issued' || row.status === 'closed') {
       approvedInPeriod += 1;
       if (row.age_days !== null) {
@@ -301,24 +367,47 @@ export function buildAnalyticsSummary(
     volumeMap.set(month, vol);
   }
 
+  const pendingReview = byStatusMap.get('pending_review') || 0;
+  const underReview = byStatusMap.get('under_review') || 0;
+  const awaitingDocuments = byStatusMap.get('awaiting_documents') || 0;
+  const queried = byStatusMap.get('queried') || 0;
+  const onHold = byStatusMap.get('on_hold') || 0;
+
   const agingQueue = rows
     .filter((r) => isOpenStatus(r.status))
-    .sort((a, b) => (b.age_days ?? -1) - (a.age_days ?? -1))
-    .slice(0, 25)
-    .map((r) => ({
-      id: r.id,
-      serial_no: r.serial_no,
-      claim_no: r.claim_no,
-      reg_no: r.reg_no,
-      status: r.status,
-      client_insurer: r.client_insurer ?? null,
-      assigned_to_name: r.assigned_to_name || null,
-      date_of_instruction: r.date_of_instruction ?? null,
-      age_days: r.age_days,
-      age_band: r.age_band,
-    }));
+    .map((r) => {
+      const assigned_to_name = r.assigned_to_name || null;
+      const priority = queuePriorityFor({
+        status: r.status,
+        age_days: r.age_days,
+        is_overdue: r.is_overdue,
+        assigned_to_name,
+      });
+      return {
+        id: r.id,
+        serial_no: r.serial_no,
+        claim_no: r.claim_no,
+        reg_no: r.reg_no,
+        status: r.status,
+        client_insurer: r.client_insurer ?? null,
+        assigned_to_name,
+        date_of_instruction: r.date_of_instruction ?? null,
+        age_days: r.age_days,
+        age_band: r.age_band,
+        is_overdue: r.is_overdue,
+        priority,
+      };
+    })
+    .sort(
+      (a, b) =>
+        PRIORITY_RANK[a.priority] - PRIORITY_RANK[b.priority] ||
+        (b.age_days ?? -1) - (a.age_days ?? -1),
+    )
+    .slice(0, 40);
 
   const slaPct = slaDenom ? Math.round((withinSla / slaDenom) * 1000) / 10 : null;
+  const attentionTotal =
+    overdue + unassigned + atRisk + pendingReview + underReview + queried;
 
   return {
     kpis: {
@@ -329,6 +418,17 @@ export function buildAnalyticsSummary(
       approvedInPeriod,
       slaCompliancePct: slaPct,
       withinSla,
+    },
+    decisions: {
+      unassigned,
+      atRisk,
+      overdueCritical,
+      pendingReview,
+      underReview,
+      awaitingDocuments,
+      queried,
+      onHold,
+      attentionTotal,
     },
     cycleTime: buildCycleTimeMetrics(rows, audits),
     byStatus: DATASHEET_STATUSES.map((status) => ({

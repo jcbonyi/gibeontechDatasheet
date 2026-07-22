@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import {
   ArrowRight,
   Ban,
@@ -78,6 +78,7 @@ function pillClass(active: boolean): string {
 export function DatasheetRegister() {
   const { user } = useAuth();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [datasheets, setDatasheets] = useState<DatasheetRow[]>([]);
   const [assessors, setAssessors] = useState<AssessorOption[]>([]);
   const [loading, setLoading] = useState(true);
@@ -87,11 +88,17 @@ export function DatasheetRegister() {
   const [assessorId, setAssessorId] = useState('');
   const [fromDate, setFromDate] = useState('');
   const [toDate, setToDate] = useState('');
-  const [status, setStatus] = useState<StatusFilter>('');
-  const [scope, setScope] = useState<ScopeFilter>('');
+  const initialStatus = searchParams.get('status') || '';
+  const initialUnallocated = searchParams.get('unallocated') === '1';
+  const [status, setStatus] = useState<StatusFilter>(
+    DATASHEET_STATUSES.includes(initialStatus as DatasheetStatus)
+      ? (initialStatus as DatasheetStatus)
+      : '',
+  );
+  const [scope, setScope] = useState<ScopeFilter>(initialUnallocated ? 'unallocated' : '');
   const [selectedView, setSelectedView] = useState<SavedViewId | ''>('');
   const [view, setView] = useState<ViewMode>('board');
-  const [openOnly, setOpenOnly] = useState(true);
+  const [openOnly, setOpenOnly] = useState(!initialStatus && !initialUnallocated);
   const [assigningId, setAssigningId] = useState<number | null>(null);
   const [assignTo, setAssignTo] = useState('');
   const [inlineAssign, setInlineAssign] = useState<Record<number, string>>({});
