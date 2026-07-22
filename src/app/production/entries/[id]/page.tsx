@@ -45,6 +45,7 @@ export default function EditProductionEntryPage() {
                 production_date: String(initial.production_date).slice(0, 10),
                 insurer_id: Number(initial.insurer_id),
                 registration_number: String(initial.registration_number || ''),
+                assignment: initial.assignment != null ? String(initial.assignment) : '',
                 amount: Number(initial.amount),
                 done_by_user_id: (initial.done_by_user_id as number | null) ?? null,
                 seen_by_user_id: (initial.seen_by_user_id as number | null) ?? null,

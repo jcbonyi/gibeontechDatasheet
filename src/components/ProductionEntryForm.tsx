@@ -5,9 +5,11 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
   amountWithoutVat,
+  ASSIGNMENT_TYPES,
   formatMoney,
   PRODUCTION_STATUS_LABELS,
   PRODUCTION_STATUSES,
+  type AssignmentType,
   type ProductionStatus,
 } from '@/lib/productionConfig';
 
@@ -22,6 +24,7 @@ interface EntryFormProps {
     production_date: string;
     insurer_id: number;
     registration_number: string;
+    assignment?: AssignmentType | string | null;
     amount: number;
     done_by_user_id: number | null;
     seen_by_user_id: number | null;
@@ -49,6 +52,7 @@ export function ProductionEntryForm({
   );
   const [insurerId, setInsurerId] = useState(String(initial?.insurer_id || ''));
   const [regNo, setRegNo] = useState(initial?.registration_number || '');
+  const [assignment, setAssignment] = useState(initial?.assignment || '');
   const [amount, setAmount] = useState(String(initial?.amount ?? ''));
   const [doneBy, setDoneBy] = useState(String(initial?.done_by_user_id || ''));
   const [seenBy, setSeenBy] = useState(String(initial?.seen_by_user_id || ''));
@@ -70,6 +74,7 @@ export function ProductionEntryForm({
     production_date: productionDate,
     insurer_id: Number(insurerId),
     registration_number: regNo,
+    assignment,
     amount: Number(amount),
     done_by_user_id: doneBy ? Number(doneBy) : null,
     seen_by_user_id: seenBy ? Number(seenBy) : null,
@@ -94,6 +99,7 @@ export function ProductionEntryForm({
       }
       if (andNew) {
         setRegNo('');
+        setAssignment('');
         setAmount('');
         setRemarks('');
         setProductionDate(new Date().toISOString().slice(0, 10));
@@ -154,6 +160,22 @@ export function ProductionEntryForm({
             onChange={(e) => setRegNo(e.target.value)}
             required
           />
+        </div>
+        <div>
+          <label className="form-label">Assignment</label>
+          <select
+            className="form-input"
+            value={assignment}
+            onChange={(e) => setAssignment(e.target.value)}
+            required
+          >
+            <option value="">Select assignment…</option>
+            {ASSIGNMENT_TYPES.map((t) => (
+              <option key={t} value={t}>
+                {t}
+              </option>
+            ))}
+          </select>
         </div>
         <div>
           <label className="form-label">Amount (incl. VAT)</label>

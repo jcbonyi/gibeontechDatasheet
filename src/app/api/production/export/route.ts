@@ -38,11 +38,12 @@ export async function GET(req: NextRequest) {
 
     if (format === 'csv') {
       const header =
-        'Date,Reg No,Insurer,Amount,Without VAT,Done By,Seen By,Instructed By,Status,Remarks\n';
+        'Date,Reg No,Assignment,Insurer,Amount,Without VAT,Done By,Seen By,Instructed By,Status,Remarks\n';
       const lines = entries.map((e) =>
         [
           e.production_date,
           e.registration_number,
+          e.assignment || '',
           e.insurer_name || '',
           e.amount,
           e.amount_without_vat,
@@ -75,10 +76,11 @@ export async function GET(req: NextRequest) {
       );
       autoTable(pdf, {
         startY: 34,
-        head: [['Date', 'Reg', 'Insurer', 'Amount', 'Done By', 'Status']],
+        head: [['Date', 'Reg', 'Assignment', 'Insurer', 'Amount', 'Done By', 'Status']],
         body: entries.slice(0, 200).map((e) => [
           e.production_date,
           e.registration_number,
+          e.assignment || '—',
           e.insurer_name || '—',
           formatMoney(e.amount),
           e.done_by_name || '—',
@@ -100,6 +102,7 @@ export async function GET(req: NextRequest) {
     reg.columns = [
       { header: 'Date', key: 'date', width: 12 },
       { header: 'Reg No', key: 'reg', width: 14 },
+      { header: 'Assignment', key: 'assignment', width: 20 },
       { header: 'Insurer', key: 'insurer', width: 22 },
       { header: 'Amount', key: 'amount', width: 12 },
       { header: 'Without VAT', key: 'net', width: 12 },
@@ -113,6 +116,7 @@ export async function GET(req: NextRequest) {
       reg.addRow({
         date: e.production_date,
         reg: e.registration_number,
+        assignment: e.assignment,
         insurer: e.insurer_name,
         amount: e.amount,
         net: e.amount_without_vat,

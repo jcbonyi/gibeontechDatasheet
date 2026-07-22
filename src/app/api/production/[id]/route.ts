@@ -11,7 +11,7 @@ import {
   getProductionEntry,
   updateProductionEntry,
 } from '@/lib/productionDb';
-import { PRODUCTION_STATUSES, type ProductionStatus } from '@/lib/productionConfig';
+import { PRODUCTION_STATUSES, normalizeAssignment, type ProductionStatus } from '@/lib/productionConfig';
 
 export async function GET(
   req: NextRequest,
@@ -51,6 +51,18 @@ export async function PATCH(
     ).trim();
     const amount = Number(body.amount ?? existing.amount);
     const status = String(body.status ?? existing.status) as ProductionStatus;
+    const assignmentRaw =
+      body.assignment !== undefined ? body.assignment : existing.assignment;
+    const assignment = normalizeAssignment(assignmentRaw);
+    if (
+      assignmentRaw != null &&
+      String(assignmentRaw).trim() &&
+      !assignment
+    ) {
+      return badRequest(
+        'Assignment must be one of: Assessment, Re-Inspection, Pre-Theft, Technical',
+      );
+    }
 
     if (!production_date || !insurer_id || !registration_number) {
       return badRequest('Date, insurer, and registration number are required');
@@ -64,6 +76,7 @@ export async function PATCH(
         production_date,
         insurer_id,
         registration_number,
+        assignment,
         amount,
         done_by_user_id:
           body.done_by_user_id !== undefined

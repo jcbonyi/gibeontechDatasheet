@@ -14,6 +14,7 @@ CREATE TABLE IF NOT EXISTS production_entries (
   production_date DATE NOT NULL,
   insurer_id INTEGER NOT NULL REFERENCES insurers(id),
   registration_number TEXT NOT NULL,
+  assignment TEXT,
   amount NUMERIC(14, 2) NOT NULL,
   amount_without_vat NUMERIC(14, 2) NOT NULL,
   done_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,

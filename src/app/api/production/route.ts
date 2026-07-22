@@ -11,7 +11,7 @@ import {
   listProductionEntries,
   listTargets,
 } from '@/lib/productionDb';
-import { PRODUCTION_STATUSES, type ProductionStatus } from '@/lib/productionConfig';
+import { PRODUCTION_STATUSES, normalizeAssignment, type ProductionStatus } from '@/lib/productionConfig';
 import { buildProductionSummary } from '@/lib/productionAnalytics';
 
 
@@ -74,11 +74,19 @@ export async function POST(req: NextRequest) {
     if (!Number.isFinite(amount) || amount < 0) return badRequest('Valid amount is required');
     if (!PRODUCTION_STATUSES.includes(status)) return badRequest('Invalid status');
 
+    const assignment = normalizeAssignment(body.assignment);
+    if (body.assignment != null && String(body.assignment).trim() && !assignment) {
+      return badRequest(
+        'Assignment must be one of: Assessment, Re-Inspection, Pre-Theft, Technical',
+      );
+    }
+
     const entry = await createProductionEntry(
       {
         production_date,
         insurer_id,
         registration_number,
+        assignment,
         amount,
         done_by_user_id: body.done_by_user_id ? Number(body.done_by_user_id) : null,
         seen_by_user_id: body.seen_by_user_id ? Number(body.seen_by_user_id) : null,

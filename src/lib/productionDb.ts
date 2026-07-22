@@ -2,7 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import { ensureDb, isJsonMode, isSupabaseMode, query } from '@/lib/db';
 import { getSupabaseAdmin } from '@/lib/supabase';
-import { amountWithoutVat, VAT_RATE, type ProductionStatus } from '@/lib/productionConfig';
+import { amountWithoutVat, normalizeAssignment, VAT_RATE, type ProductionStatus } from '@/lib/productionConfig';
 
 export interface DbInsurer {
   id: number;
@@ -19,6 +19,7 @@ export interface DbProductionEntry {
   production_date: string;
   insurer_id: number;
   registration_number: string;
+  assignment: string | null;
   amount: number;
   amount_without_vat: number;
   done_by_user_id: number | null;
@@ -163,6 +164,7 @@ function enrichEntry(
   return {
     ...row,
     production_date: dateOnly(row.production_date),
+    assignment: row.assignment ?? null,
     amount: num(row.amount),
     amount_without_vat: num(row.amount_without_vat),
     insurer_name: insurers.get(row.insurer_id) || row.insurer_name || null,
@@ -371,6 +373,7 @@ function matchesFilters(row: DbProductionEntry, filters: ProductionListFilters):
     const q = filters.q.toLowerCase();
     const hay = [
       row.registration_number,
+      row.assignment || '',
       row.remarks || '',
       String(row.amount),
       row.insurer_name || '',
@@ -450,6 +453,7 @@ export type ProductionEntryInput = {
   production_date: string;
   insurer_id: number;
   registration_number: string;
+  assignment?: string | null;
   amount: number;
   done_by_user_id?: number | null;
   seen_by_user_id?: number | null;
@@ -469,6 +473,7 @@ export async function createProductionEntry(
   const now = new Date().toISOString();
   const status = input.status || 'completed';
   const reg = input.registration_number.trim().toUpperCase();
+  const assignment = normalizeAssignment(input.assignment);
 
   if (isJsonMode()) {
     const s = getStore();
@@ -479,6 +484,7 @@ export async function createProductionEntry(
       production_date: dateOnly(input.production_date),
       insurer_id: input.insurer_id,
       registration_number: reg,
+      assignment,
       amount,
       amount_without_vat: without,
       done_by_user_id: input.done_by_user_id ?? null,
@@ -506,6 +512,7 @@ export async function createProductionEntry(
         production_date: dateOnly(input.production_date),
         insurer_id: input.insurer_id,
         registration_number: reg,
+        assignment,
         amount,
         amount_without_vat: without,
         done_by_user_id: input.done_by_user_id ?? null,
@@ -524,14 +531,15 @@ export async function createProductionEntry(
 
   const result = await query<DbProductionEntry>(
     `INSERT INTO production_entries (
-      production_date, insurer_id, registration_number, amount, amount_without_vat,
+      production_date, insurer_id, registration_number, assignment, amount, amount_without_vat,
       done_by_user_id, seen_by_user_id, instructed_by_user_id, remarks, status,
       created_by, updated_by
-    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *`,
+    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING *`,
     [
       dateOnly(input.production_date),
       input.insurer_id,
       reg,
+      assignment,
       amount,
       without,
       input.done_by_user_id ?? null,
@@ -557,6 +565,7 @@ export async function updateProductionEntry(
   const without = amountWithoutVat(amount, vat);
   const status = input.status || 'completed';
   const reg = input.registration_number.trim().toUpperCase();
+  const assignment = normalizeAssignment(input.assignment);
   const now = new Date().toISOString();
 
   if (isJsonMode()) {
@@ -568,6 +577,7 @@ export async function updateProductionEntry(
       production_date: dateOnly(input.production_date),
       insurer_id: input.insurer_id,
       registration_number: reg,
+      assignment,
       amount,
       amount_without_vat: without,
       done_by_user_id: input.done_by_user_id ?? null,
@@ -591,6 +601,7 @@ export async function updateProductionEntry(
         production_date: dateOnly(input.production_date),
         insurer_id: input.insurer_id,
         registration_number: reg,
+        assignment,
         amount,
         amount_without_vat: without,
         done_by_user_id: input.done_by_user_id ?? null,
@@ -608,14 +619,15 @@ export async function updateProductionEntry(
 
   const result = await query<DbProductionEntry>(
     `UPDATE production_entries SET
-      production_date=$1, insurer_id=$2, registration_number=$3, amount=$4, amount_without_vat=$5,
-      done_by_user_id=$6, seen_by_user_id=$7, instructed_by_user_id=$8, remarks=$9, status=$10,
-      updated_by=$11, updated_at=NOW()
-     WHERE id=$12 RETURNING *`,
+      production_date=$1, insurer_id=$2, registration_number=$3, assignment=$4, amount=$5, amount_without_vat=$6,
+      done_by_user_id=$7, seen_by_user_id=$8, instructed_by_user_id=$9, remarks=$10, status=$11,
+      updated_by=$12, updated_at=NOW()
+     WHERE id=$13 RETURNING *`,
     [
       dateOnly(input.production_date),
       input.insurer_id,
       reg,
+      assignment,
       amount,
       without,
       input.done_by_user_id ?? null,

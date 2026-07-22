@@ -1,10 +1,10 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
-import { Download, Pencil, Plus, Search, Trash2 } from 'lucide-react';
+import { Download, Pencil, Plus, Search, Trash2, Upload } from 'lucide-react';
 import { formatMoney, PRODUCTION_STATUS_LABELS, type ProductionStatus } from '@/lib/productionConfig';
-import { canDeleteProductionEntry } from '@/lib/productionPermissions';
+import { canDeleteProductionEntry, canManageProduction } from '@/lib/productionPermissions';
 import { useAuth } from '@/context/AuthContext';
 import { useProductionLookups } from '@/components/ProductionEntryForm';
 
@@ -12,6 +12,7 @@ interface EntryRow {
   id: number;
   production_date: string;
   registration_number: string;
+  assignment?: string | null;
   insurer_name?: string | null;
   amount: number;
   amount_without_vat: number;
@@ -61,8 +62,12 @@ export function ProductionRegister() {
   const [regNo, setRegNo] = useState('');
   const [status, setStatus] = useState('');
   const [q, setQ] = useState('');
+  const [importing, setImporting] = useState(false);
+  const [importMessage, setImportMessage] = useState('');
+  const fileRef = useRef<HTMLInputElement>(null);
 
   const canDelete = canDeleteProductionEntry(user);
+  const canImport = canManageProduction(user);
 
   const queryString = useCallback(() => {
     const p = new URLSearchParams();
@@ -141,6 +146,35 @@ export function ProductionRegister() {
     load();
   };
 
+  const handleImport = async (file: File | null) => {
+    if (!file) return;
+    setImporting(true);
+    setImportMessage('');
+    try {
+      const body = new FormData();
+      body.append('file', file);
+      const res = await fetch('/api/production/import', { method: 'POST', body });
+      const data = await res.json();
+      if (!res.ok) {
+        const detail = (data.errors || [])
+          .slice(0, 5)
+          .map((e: { row: number; message: string }) => `Row ${e.row}: ${e.message}`)
+          .join('\n');
+        setImportMessage(data.message || 'Import failed');
+        if (detail) alert(`${data.message || 'Import failed'}\n\n${detail}`);
+        return;
+      }
+      const warnCount = (data.warnings || []).length;
+      setImportMessage(
+        `${data.message}${warnCount ? ` · ${warnCount} warning(s)` : ''}`,
+      );
+      load();
+    } finally {
+      setImporting(false);
+      if (fileRef.current) fileRef.current.value = '';
+    }
+  };
+
   return (
     <div>
       <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
@@ -149,6 +183,30 @@ export function ProductionRegister() {
           <p className="page-subtitle">Searchable log of valuation production entries</p>
         </div>
         <div className="flex flex-wrap gap-2">
+          {canImport && (
+            <>
+              <a href="/api/production/import" className="btn-secondary">
+                <Download className="h-4 w-4" />
+                Import template
+              </a>
+              <button
+                type="button"
+                className="btn-secondary"
+                disabled={importing}
+                onClick={() => fileRef.current?.click()}
+              >
+                <Upload className="h-4 w-4" />
+                {importing ? 'Importing…' : 'Import Excel'}
+              </button>
+              <input
+                ref={fileRef}
+                type="file"
+                accept=".xlsx,.xlsm,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                className="hidden"
+                onChange={(e) => handleImport(e.target.files?.[0] || null)}
+              />
+            </>
+          )}
           <a href={exportUrl('xlsx')} className="btn-secondary">
             <Download className="h-4 w-4" />
             Excel
@@ -164,6 +222,21 @@ export function ProductionRegister() {
             New entry
           </Link>
         </div>
+      </div>
+
+      {importMessage && (
+        <p className="mb-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm text-emerald-800">
+          {importMessage}
+        </p>
+      )}
+
+      <div className="section-card mb-4 !py-3 text-xs text-slate-500">
+        Excel import expects headers:{' '}
+        <span className="font-semibold text-slate-700">
+          DATE · INSURER · REG NO · ASSIGNMENT · AMOUNT · WITHOUT VAT · DONE BY · SEEN BY ·
+          INSTRUCTED BY
+        </span>
+        . Missing insurers are created automatically. Staff names must match user accounts.
       </div>
 
       <div className="section-card mb-4 !py-4">
@@ -246,32 +319,34 @@ export function ProductionRegister() {
           <p className="py-8 text-center text-sm text-slate-500">No production entries match.</p>
         ) : (
           <table className="data-table">
-            <thead>
-              <tr>
-                <th>Date</th>
-                <th>Reg No</th>
-                <th>Insurer</th>
-                <th>Amount</th>
-                <th>Without VAT</th>
-                <th>Done By</th>
-                <th>Seen By</th>
-                <th>Instructed By</th>
-                <th>Status</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {entries.map((e) => (
-                <tr key={e.id}>
-                  <td>{e.production_date}</td>
-                  <td className="font-semibold text-brand-800">{e.registration_number}</td>
-                  <td>{e.insurer_name || '—'}</td>
-                  <td>{formatMoney(e.amount)}</td>
-                  <td>{formatMoney(e.amount_without_vat)}</td>
-                  <td>{e.done_by_name || '—'}</td>
-                  <td>{e.seen_by_name || '—'}</td>
-                  <td>{e.instructed_by_name || '—'}</td>
-                  <td>{PRODUCTION_STATUS_LABELS[e.status]}</td>
+                <thead>
+                  <tr>
+                    <th>Date</th>
+                    <th>Reg No</th>
+                    <th>Assignment</th>
+                    <th>Insurer</th>
+                    <th>Amount</th>
+                    <th>Without VAT</th>
+                    <th>Done By</th>
+                    <th>Seen By</th>
+                    <th>Instructed By</th>
+                    <th>Status</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {entries.map((e) => (
+                    <tr key={e.id}>
+                      <td>{e.production_date}</td>
+                      <td className="font-semibold text-brand-800">{e.registration_number}</td>
+                      <td>{e.assignment || '—'}</td>
+                      <td>{e.insurer_name || '—'}</td>
+                      <td>{formatMoney(e.amount)}</td>
+                      <td>{formatMoney(e.amount_without_vat)}</td>
+                      <td>{e.done_by_name || '—'}</td>
+                      <td>{e.seen_by_name || '—'}</td>
+                      <td>{e.instructed_by_name || '—'}</td>
+                      <td>{PRODUCTION_STATUS_LABELS[e.status]}</td>
                   <td>
                     <div className="flex flex-wrap gap-2">
                       <Link
