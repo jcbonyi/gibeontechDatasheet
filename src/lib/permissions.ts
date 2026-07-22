@@ -164,9 +164,8 @@ export function creatableRoles(actorRole: UserRole): UserRole[] {
 
 export function canManageTargetUser(actor: AuthUser, targetRole: UserRole): boolean {
   if (!canManageUsers(actor)) return false;
-  if (actor.id && actor.role === targetRole && isSuperUser(targetRole)) {
-    return isSuperUser(actor.role);
-  }
+  // Admin can manage every account (role changes, passwords, activation).
+  if (actor.role === 'Admin') return true;
   if (isSuperUser(targetRole) && !isSuperUser(actor.role)) return false;
   return ROLE_RANK[actor.role] > ROLE_RANK[targetRole];
 }

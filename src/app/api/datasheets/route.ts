@@ -58,7 +58,7 @@ export async function POST(req: NextRequest) {
           ? 'in_progress'
           : 'instructed'
     ) as DatasheetStatus;
-    formData = applySeenBy(formData, user.name);
+    formData = applySeenBy(formData, user.name, user.role);
 
     let datasheet = null;
     for (let attempt = 0; attempt < 5; attempt++) {

@@ -95,7 +95,10 @@ export function requireRole(user: AuthUser, roles: UserRole[]): boolean {
 export function applySeenBy(
   formData: Record<string, unknown>,
   userName: string,
+  role?: UserRole,
 ): Record<string, unknown> {
+  // Seen By is the Assessor who attended — only stamp when the actor is an Assessor.
+  if (role !== 'Assessor') return formData;
   const signOff = { ...((formData.signOff as Record<string, unknown>) || {}) };
   signOff.seenBy = userName;
   return { ...formData, signOff };

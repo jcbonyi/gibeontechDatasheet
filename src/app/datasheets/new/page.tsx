@@ -14,7 +14,9 @@ export default function NewDatasheetPage() {
   const router = useRouter();
   const { user } = useAuth();
 
-  const initialData = createDefaultFormData(user?.name);
+  const initialData = createDefaultFormData(
+    user?.role === 'Assessor' ? user.name : '',
+  );
 
   const handleSave = async (formData: DatasheetFormData, status: DatasheetStatus) => {
     const { ok, data } = await fetchJson<{ message?: string; datasheet: { id: number } }>(

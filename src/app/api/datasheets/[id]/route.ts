@@ -81,7 +81,7 @@ export async function PATCH(
       return forbidden();
     }
 
-    formData = applySeenBy(formData, user.name);
+    formData = applySeenBy(formData, user.name, user.role);
     const denorm = extractDenormalizedFields(formData, datasheet.serial_no);
 
     const updated = await updateDatasheetRecord(Number(id), {

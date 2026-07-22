@@ -28,6 +28,7 @@ export async function POST(
     const formData = applySeenBy(
       JSON.parse(JSON.stringify(source.form_data)) as Record<string, unknown>,
       user.name,
+      user.role,
     );
 
     let datasheet = null;

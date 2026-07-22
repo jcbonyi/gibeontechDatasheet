@@ -26,6 +26,7 @@ export default function AdminUsersPage() {
   const [role, setRole] = useState<UserRole>('Assessor');
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
+  const [updatingId, setUpdatingId] = useState<number | null>(null);
 
   const load = () => {
     fetch('/api/users')
@@ -61,25 +62,37 @@ export default function AdminUsersPage() {
     setName('');
     setEmail('');
     setPassword('');
-    setRole('Assessor');
+    setRole(creatableRoles[0] || 'Assessor');
     load();
   };
 
   const handleUpdate = async (id: number, patch: Record<string, unknown>) => {
     setError('');
     setMessage('');
-    const res = await fetch(`/api/users/${id}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(patch),
-    });
-    const data = await res.json();
-    if (!res.ok) {
-      setError(data.message || 'Update failed');
-      return;
+    setUpdatingId(id);
+    try {
+      const res = await fetch(`/api/users/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(patch),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.message || 'Update failed');
+        return;
+      }
+      setMessage(patch.role ? 'Role updated' : 'User updated');
+      load();
+    } finally {
+      setUpdatingId(null);
     }
-    setMessage('User updated');
-    load();
+  };
+
+  const roleOptionsFor = (currentRole: UserRole): UserRole[] => {
+    const options = new Set<UserRole>(creatableRoles);
+    // Keep current role visible even if it would not be creatable (edge cases).
+    options.add(currentRole);
+    return Array.from(options);
   };
 
   return (
@@ -89,7 +102,7 @@ export default function AdminUsersPage() {
           <h1 className="page-title">User Accounts</h1>
           <p className="page-subtitle">
             {actor?.role === 'Admin'
-              ? 'Super user — manage all accounts'
+              ? 'Super user — manage all accounts and roles'
               : actor?.role === 'PrincipalOfficer'
                 ? 'Manage officers, operations managers, and assessors'
                 : 'Manage assessor accounts'}
@@ -136,39 +149,74 @@ export default function AdminUsersPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {users.map((u) => (
-                    <tr key={u.id}>
-                      <td>{u.name}</td>
-                      <td>{u.email}</td>
-                      <td>{ROLE_LABELS[u.role]}</td>
-                      <td>{u.is_active ? 'Active' : 'Inactive'}</td>
-                      <td>
-                        {u.canManage && u.id !== actor?.id ? (
-                          <div className="flex flex-wrap gap-2">
-                            <button
-                              type="button"
-                              className="text-xs font-medium text-brand-600"
-                              onClick={() => {
-                                const newPassword = prompt('Enter new password (min 8 chars)');
-                                if (newPassword) handleUpdate(u.id, { password: newPassword });
+                  {users.map((u) => {
+                    const canEdit = Boolean(u.canManage && u.id !== actor?.id);
+                    const options = roleOptionsFor(u.role);
+                    return (
+                      <tr key={u.id}>
+                        <td>{u.name}</td>
+                        <td>{u.email}</td>
+                        <td>
+                          {canEdit ? (
+                            <select
+                              value={u.role}
+                              disabled={updatingId === u.id}
+                              className="form-input min-w-[10rem] py-1 text-sm"
+                              aria-label={`Change role for ${u.name}`}
+                              onChange={(e) => {
+                                const nextRole = e.target.value as UserRole;
+                                if (nextRole === u.role) return;
+                                const label = ROLE_LABELS[nextRole];
+                                if (
+                                  !confirm(
+                                    `Change ${u.name}'s role from ${ROLE_LABELS[u.role]} to ${label}?`,
+                                  )
+                                ) {
+                                  e.target.value = u.role;
+                                  return;
+                                }
+                                handleUpdate(u.id, { role: nextRole });
                               }}
                             >
-                              Reset password
-                            </button>
-                            <button
-                              type="button"
-                              className="text-xs font-medium text-amber-700"
-                              onClick={() => handleUpdate(u.id, { is_active: !u.is_active })}
-                            >
-                              {u.is_active ? 'Deactivate' : 'Activate'}
-                            </button>
-                          </div>
-                        ) : (
-                          <span className="text-xs text-slate-400">—</span>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
+                              {options.map((r) => (
+                                <option key={r} value={r} disabled={!creatableRoles.includes(r) && r !== u.role}>
+                                  {ROLE_LABELS[r]}
+                                </option>
+                              ))}
+                            </select>
+                          ) : (
+                            ROLE_LABELS[u.role]
+                          )}
+                        </td>
+                        <td>{u.is_active ? 'Active' : 'Inactive'}</td>
+                        <td>
+                          {canEdit ? (
+                            <div className="flex flex-wrap gap-2">
+                              <button
+                                type="button"
+                                className="text-xs font-medium text-brand-600"
+                                onClick={() => {
+                                  const newPassword = prompt('Enter new password (min 8 chars)');
+                                  if (newPassword) handleUpdate(u.id, { password: newPassword });
+                                }}
+                              >
+                                Reset password
+                              </button>
+                              <button
+                                type="button"
+                                className="text-xs font-medium text-amber-700"
+                                onClick={() => handleUpdate(u.id, { is_active: !u.is_active })}
+                              >
+                                {u.is_active ? 'Deactivate' : 'Activate'}
+                              </button>
+                            </div>
+                          ) : (
+                            <span className="text-xs text-slate-400">—</span>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>

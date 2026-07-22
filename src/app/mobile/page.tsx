@@ -32,14 +32,18 @@ export default function MobileAssessorPage() {
     setSaving(true);
     setError('');
     try {
-      const formData = createDefaultFormData(user?.name);
+      const formData = createDefaultFormData(
+        user?.role === 'Assessor' ? user.name : '',
+      );
       formData.header.formTypes = formTypes;
       formData.basicInfo.claimNo = claimNo;
       formData.basicInfo.regNo = regNo;
       formData.basicInfo.clientInsurer = insurer;
       formData.basicInfo.dateOfInstruction = instructionDate;
       formData.damage.damageSummary = damage;
-      formData.signOff.seenBy = user?.name || '';
+      if (user?.role === 'Assessor' && user.name) {
+        formData.signOff.seenBy = user.name;
+      }
 
       const { ok, data } = await fetchJson<{ message?: string; datasheet: { id: number } }>(
         '/api/datasheets',

@@ -102,10 +102,10 @@ export function DatasheetForm({
   }, [isInspectionMode, setValue, user?.name]);
 
   useEffect(() => {
-    if (!isInspectionMode && user?.name) {
+    if (!isInspectionMode && user?.role === 'Assessor' && user.name) {
       setValue('signOff.seenBy', user.name);
     }
-  }, [isInspectionMode, user?.name, setValue]);
+  }, [isInspectionMode, user?.role, user?.name, setValue]);
 
   const trackActiveSection = useCallback(() => {
     const offsets = FORM_SECTIONS.map((s) => {
@@ -610,11 +610,23 @@ export function DatasheetForm({
           <FormField label="Seen By" required error={errors.signOff?.seenBy?.message}>
             <input
               {...register('signOff.seenBy')}
-              readOnly
-              className="form-input bg-slate-50 text-slate-700"
-              title="Filled automatically from your logged-in account"
+              readOnly={readOnly || user?.role === 'Assessor'}
+              className={
+                readOnly || user?.role === 'Assessor'
+                  ? 'form-input bg-slate-50 text-slate-700'
+                  : 'form-input'
+              }
+              title={
+                user?.role === 'Assessor'
+                  ? 'Filled automatically from your Assessor account'
+                  : undefined
+              }
             />
-            <p className="mt-1 text-xs text-slate-500">Set automatically from your account</p>
+            {user?.role === 'Assessor' && (
+              <p className="mt-1 text-xs text-slate-500">
+                Set automatically from the logged-in Assessor
+              </p>
+            )}
           </FormField>
           <FormField
             label="Date and Time"

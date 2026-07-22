@@ -75,7 +75,9 @@ export default function EditDatasheetPage() {
       .then(({ ok, data }) => {
         if (!ok) throw new Error(data.message || 'Failed to load');
         const loaded = mergeFormData(data.datasheet.form_data as DatasheetFormData);
-        if (user?.name) loaded.signOff.seenBy = user.name;
+        if (user?.role === 'Assessor' && user.name) {
+          loaded.signOff.seenBy = user.name;
+        }
         setFormData(loaded);
         setSerialNo(data.datasheet.serial_no);
         setStatus(data.datasheet.status);
