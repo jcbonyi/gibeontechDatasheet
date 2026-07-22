@@ -5,6 +5,7 @@ import { usePathname } from 'next/navigation';
 import {
   BarChart3,
   ClipboardList,
+  Factory,
   FileBarChart2,
   LogOut,
   Plus,
@@ -15,6 +16,7 @@ import { useAuth } from '@/context/AuthContext';
 import { Letterhead } from '@/components/Letterhead';
 import { COMPANY } from '@/constants/brand';
 import { canManageUsers } from '@/lib/permissions';
+import { canManageProductionAdmin } from '@/lib/productionPermissions';
 import { ROLE_LABELS } from '@/types/datasheet';
 import { KeyboardShortcuts } from '@/components/KeyboardShortcuts';
 
@@ -27,6 +29,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     pathname === '/datasheets' ||
     (pathname.startsWith('/datasheets/') && !pathname.startsWith('/datasheets/new'));
   const isReports = pathname.startsWith('/reports');
+  const isProduction = pathname.startsWith('/production');
   const isAdmin = pathname.startsWith('/admin');
 
   return (
@@ -71,6 +74,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 <FileBarChart2 className="h-4 w-4" />
                 Reports
               </Link>
+              <Link
+                href="/production"
+                className={`nav-pill ${isProduction ? 'nav-pill-active' : 'nav-pill-idle'}`}
+              >
+                <Factory className="h-4 w-4" />
+                Production
+              </Link>
               <Link href="/datasheets/new" className="nav-pill nav-pill-idle" title="Alt+N">
                 <Plus className="h-4 w-4" />
                 New
@@ -82,10 +92,18 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               {user && canManageUsers(user) && (
                 <Link
                   href="/admin/users"
-                  className={`nav-pill ${isAdmin ? 'nav-pill-active' : 'nav-pill-idle'}`}
+                  className={`nav-pill ${isAdmin && pathname.includes('/users') ? 'nav-pill-active' : 'nav-pill-idle'}`}
                 >
                   <Users className="h-4 w-4" />
                   Users
+                </Link>
+              )}
+              {user && canManageProductionAdmin(user) && (
+                <Link
+                  href="/admin/production"
+                  className={`nav-pill ${pathname.startsWith('/admin/production') || pathname.startsWith('/admin/insurers') ? 'nav-pill-active' : 'nav-pill-idle'}`}
+                >
+                  Prod admin
                 </Link>
               )}
               <button

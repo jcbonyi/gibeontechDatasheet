@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { useAuth } from '@/context/AuthContext';
 import { Letterhead } from '@/components/Letterhead';
 import { COMPANY } from '@/constants/brand';
@@ -104,6 +105,12 @@ export default function LoginPage() {
             {loading ? 'Please wait...' : isBootstrap || needsBootstrap ? 'Create Admin' : 'Sign In'}
           </button>
         </form>
+
+        {!needsBootstrap && (
+          <Link href="/forgot-password" className="mt-4 block text-center text-sm text-brand-600 hover:underline">
+            Forgot password?
+          </Link>
+        )}
 
         {needsBootstrap && !isBootstrap && (
           <button
