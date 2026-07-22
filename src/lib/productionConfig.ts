@@ -26,8 +26,11 @@ export const ASSIGNMENT_TYPES = [
 
 export type AssignmentType = (typeof ASSIGNMENT_TYPES)[number];
 
-/** Normalize free text / Excel values to a known assignment type. */
-export function normalizeAssignment(value: unknown): AssignmentType | null {
+/**
+ * Normalize assignment text. Known aliases map to standard types;
+ * any other non-empty value is kept as free text (import-friendly).
+ */
+export function normalizeAssignment(value: unknown): string | null {
   if (value == null) return null;
   const raw = String(value).replace(/\u00a0/g, ' ').trim();
   if (!raw) return null;
@@ -38,13 +41,19 @@ export function normalizeAssignment(value: unknown): AssignmentType | null {
   const compact = raw.toLowerCase().replace(/[\s_-]+/g, '');
   const aliases: Record<string, AssignmentType> = {
     assessment: 'Assessment',
+    assessments: 'Assessment',
     reinspection: 'Re-Inspection',
     reinspections: 'Re-Inspection',
     reinspect: 'Re-Inspection',
+    're-inspection': 'Re-Inspection',
     pretheft: 'Pre-Theft',
+    'pre-theft': 'Pre-Theft',
     technical: 'Technical',
+    valuation: 'Assessment',
   };
-  return aliases[compact] || null;
+  if (aliases[compact]) return aliases[compact];
+
+  return raw;
 }
 
 export function isAssignmentType(value: string): value is AssignmentType {

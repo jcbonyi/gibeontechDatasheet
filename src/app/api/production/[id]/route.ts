@@ -54,15 +54,6 @@ export async function PATCH(
     const assignmentRaw =
       body.assignment !== undefined ? body.assignment : existing.assignment;
     const assignment = normalizeAssignment(assignmentRaw);
-    if (
-      assignmentRaw != null &&
-      String(assignmentRaw).trim() &&
-      !assignment
-    ) {
-      return badRequest(
-        'Assignment must be one of: Assessment, Re-Inspection, Pre-Theft, Technical',
-      );
-    }
 
     if (!production_date || !registration_number) {
       return badRequest('Date and registration number are required');

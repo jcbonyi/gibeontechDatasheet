@@ -305,16 +305,9 @@ function parseSheet(
       return;
     }
 
-    const assignment = raw.assignment ? normalizeAssignment(raw.assignment) : null;
-    if (raw.assignment && String(raw.assignment).trim() && !assignment) {
-      errors.push({
-        row: rowNumber,
-        sheet: sheetName,
-        message:
-          'ASSIGNMENT must be Assessment, Re-Inspection, Pre-Theft, or Technical',
-      });
-      return;
-    }
+    const assignment = raw.assignment
+      ? normalizeAssignment(raw.assignment)
+      : null;
 
     rows.push({
       rowNumber,

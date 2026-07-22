@@ -242,9 +242,10 @@ export function ProductionRegister() {
           DATE · INSURER · REG NO · ASSIGNMENT · AMOUNT · WITHOUT VAT · DONE BY · SEEN BY ·
           INSTRUCTED BY
         </span>
-        . Missing insurers and Done/Seen staff names are created automatically. Instructed By is
-        free text. Use the <span className="font-semibold text-slate-700">All</span> date preset to
-        see every month after import.
+        . Missing insurers and Done/Seen staff names are created automatically. Instructed By and
+        Assignment accept free text (known types are normalized when possible). Use the{' '}
+        <span className="font-semibold text-slate-700">All</span> date preset to see every month
+        after import.
       </div>
 
       <div className="section-card mb-4 !py-4">

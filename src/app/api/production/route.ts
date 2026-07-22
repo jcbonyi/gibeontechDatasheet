@@ -73,11 +73,6 @@ export async function POST(req: NextRequest) {
     if (!PRODUCTION_STATUSES.includes(status)) return badRequest('Invalid status');
 
     const assignment = normalizeAssignment(body.assignment);
-    if (body.assignment != null && String(body.assignment).trim() && !assignment) {
-      return badRequest(
-        'Assignment must be one of: Assessment, Re-Inspection, Pre-Theft, Technical',
-      );
-    }
 
     let people;
     try {

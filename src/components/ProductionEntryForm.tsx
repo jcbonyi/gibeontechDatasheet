@@ -201,19 +201,18 @@ export function ProductionEntryForm({
         </div>
         <div>
           <label className="form-label">Assignment</label>
-          <select
+          <input
             className="form-input"
+            list="production-assignments"
             value={assignment}
             onChange={(e) => setAssignment(e.target.value)}
-            required
-          >
-            <option value="">Select assignment…</option>
+            placeholder="e.g. Assessment"
+          />
+          <datalist id="production-assignments">
             {ASSIGNMENT_TYPES.map((t) => (
-              <option key={t} value={t}>
-                {t}
-              </option>
+              <option key={t} value={t} />
             ))}
-          </select>
+          </datalist>
         </div>
         <div>
           <label className="form-label">Amount (incl. VAT)</label>
