@@ -1,11 +1,13 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import {
   ArrowRight,
   Ban,
+  ChevronLeft,
+  ChevronRight,
   Columns3,
   Download,
   FileSpreadsheet,
@@ -104,6 +106,9 @@ export function DatasheetRegister() {
   const [inlineAssign, setInlineAssign] = useState<Record<number, string>>({});
   const [actionMessage, setActionMessage] = useState('');
   const [dragOverTarget, setDragOverTarget] = useState<string>('');
+  const [canScrollLeft, setCanScrollLeft] = useState(false);
+  const [canScrollRight, setCanScrollRight] = useState(false);
+  const boardScrollRef = useRef<HTMLDivElement>(null);
 
   const canAssign = user ? canAssignDatasheet(user) : false;
   const canDelete = user ? canDeleteDatasheet(user) : false;
@@ -202,6 +207,36 @@ export function DatasheetRegister() {
       })),
     [filtered],
   );
+
+  const updateBoardScrollState = useCallback(() => {
+    const el = boardScrollRef.current;
+    if (!el) return;
+    const max = el.scrollWidth - el.clientWidth;
+    setCanScrollLeft(el.scrollLeft > 4);
+    setCanScrollRight(max > 4 && el.scrollLeft < max - 4);
+  }, []);
+
+  useEffect(() => {
+    if (view !== 'board') return;
+    const el = boardScrollRef.current;
+    if (!el) return;
+    updateBoardScrollState();
+    el.addEventListener('scroll', updateBoardScrollState, { passive: true });
+    const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(updateBoardScrollState) : null;
+    ro?.observe(el);
+    window.addEventListener('resize', updateBoardScrollState);
+    return () => {
+      el.removeEventListener('scroll', updateBoardScrollState);
+      ro?.disconnect();
+      window.removeEventListener('resize', updateBoardScrollState);
+    };
+  }, [view, boardColumns, updateBoardScrollState]);
+
+  const scrollBoard = (dir: -1 | 1) => {
+    const el = boardScrollRef.current;
+    if (!el) return;
+    el.scrollBy({ left: dir * Math.min(320, el.clientWidth * 0.7), behavior: 'smooth' });
+  };
 
   const handleAssign = async (id: number, assignedTo: string) => {
     if (!assignedTo) return;
@@ -668,57 +703,97 @@ export function DatasheetRegister() {
           </div>
         </div>
       ) : view === 'board' ? (
-        <div className="task-board -mx-4 overflow-x-auto px-4 pb-2 sm:mx-0 sm:px-0">
-          <div className="flex min-w-max gap-3">
-            {boardColumns.map((col) => (
+        <div className="space-y-2">
+          <div className="flex flex-wrap items-center justify-between gap-2 px-0.5">
+            <p className="text-xs text-slate-500">
+              <span className="font-semibold text-slate-700">{BOARD_STATUSES.length} status columns</span>
+              {' · '}
+              scroll horizontally to see all stages (Pending review, Under review, Queried, …)
+            </p>
+            <div className="flex items-center gap-1.5">
+              <button
+                type="button"
+                onClick={() => scrollBoard(-1)}
+                disabled={!canScrollLeft}
+                className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-700 shadow-sm transition hover:bg-brand-50 disabled:cursor-not-allowed disabled:opacity-40"
+                aria-label="Scroll board left"
+                title="Previous columns"
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </button>
+              <button
+                type="button"
+                onClick={() => scrollBoard(1)}
+                disabled={!canScrollRight}
+                className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-700 shadow-sm transition hover:bg-brand-50 disabled:cursor-not-allowed disabled:opacity-40"
+                aria-label="Scroll board right"
+                title="Next columns"
+              >
+                <ChevronRight className="h-4 w-4" />
+              </button>
+              {canScrollRight && (
+                <span className="hidden items-center gap-1 rounded-full bg-brand-50 px-2.5 py-1 text-[11px] font-semibold text-brand-700 sm:inline-flex">
+                  More statuses
+                  <ChevronRight className="h-3.5 w-3.5" />
+                </span>
+              )}
+            </div>
+          </div>
+
+          <div ref={boardScrollRef} className="task-board" data-shortcut="task-board">
+            <div className="task-board-track">
+              {boardColumns.map((col) => (
+                <div
+                  key={col.status}
+                  data-shortcut="board-column"
+                  data-status={col.status}
+                  onDragOver={(e) => {
+                    e.preventDefault();
+                    setDragOverTarget(col.status);
+                  }}
+                  onDragLeave={() => setDragOverTarget((cur) => (cur === col.status ? '' : cur))}
+                  onDrop={(e) => handleDrop(col.status, e)}
+                  className={`task-column ${
+                    dragOverTarget === col.status ? 'ring-2 ring-brand-400 bg-brand-50/60' : ''
+                  }`}
+                >
+                  <div className="mb-3 flex shrink-0 items-center justify-between gap-2">
+                    <h3 className="text-xs font-bold uppercase tracking-wide text-slate-600">
+                      {col.label}
+                    </h3>
+                    <span className="rounded-full bg-slate-200/80 px-2 py-0.5 text-[11px] font-semibold text-slate-700">
+                      {col.items.length}
+                    </span>
+                  </div>
+                  <div className="task-column-body">
+                    {col.items.length === 0 && (
+                      <p className="rounded-lg border border-dashed border-slate-200 px-3 py-6 text-center text-xs text-slate-400">
+                        No tasks
+                      </p>
+                    )}
+                    {col.items.map((row) => renderCard(row))}
+                  </div>
+                </div>
+              ))}
+
               <div
-                key={col.status}
-                data-shortcut="board-column"
-                data-status={col.status}
+                data-shortcut="cancel-drop-zone"
                 onDragOver={(e) => {
                   e.preventDefault();
-                  setDragOverTarget(col.status);
+                  setDragOverTarget('cancelled');
                 }}
-                onDragLeave={() => setDragOverTarget((cur) => (cur === col.status ? '' : cur))}
-                onDrop={(e) => handleDrop(col.status, e)}
-                className={`task-column ${
-                  dragOverTarget === col.status ? 'ring-2 ring-brand-400 bg-brand-50/60' : ''
+                onDragLeave={() => setDragOverTarget((cur) => (cur === 'cancelled' ? '' : cur))}
+                onDrop={(e) => handleDrop('cancelled', e)}
+                className={`task-column flex w-40 shrink-0 flex-col items-center justify-center border-2 border-dashed text-center ${
+                  dragOverTarget === 'cancelled'
+                    ? 'border-red-400 bg-red-50 ring-2 ring-red-300'
+                    : 'border-slate-300 bg-slate-50/60'
                 }`}
               >
-                <div className="mb-3 flex items-center justify-between gap-2">
-                  <h3 className="text-xs font-bold uppercase tracking-wide text-slate-600">{col.label}</h3>
-                  <span className="rounded-full bg-slate-200/80 px-2 py-0.5 text-[11px] font-semibold text-slate-700">
-                    {col.items.length}
-                  </span>
-                </div>
-                <div className="space-y-2.5">
-                  {col.items.length === 0 && (
-                    <p className="rounded-lg border border-dashed border-slate-200 px-3 py-6 text-center text-xs text-slate-400">
-                      No tasks
-                    </p>
-                  )}
-                  {col.items.map((row) => renderCard(row))}
-                </div>
+                <Ban className="h-6 w-6 text-red-400" />
+                <p className="mt-2 text-xs font-semibold text-slate-500">Drop here to cancel</p>
+                <p className="mt-1 text-[11px] text-slate-400">Requires a cancellation reason</p>
               </div>
-            ))}
-
-            <div
-              data-shortcut="cancel-drop-zone"
-              onDragOver={(e) => {
-                e.preventDefault();
-                setDragOverTarget('cancelled');
-              }}
-              onDragLeave={() => setDragOverTarget((cur) => (cur === 'cancelled' ? '' : cur))}
-              onDrop={(e) => handleDrop('cancelled', e)}
-              className={`task-column flex w-40 shrink-0 flex-col items-center justify-center border-2 border-dashed text-center ${
-                dragOverTarget === 'cancelled'
-                  ? 'border-red-400 bg-red-50 ring-2 ring-red-300'
-                  : 'border-slate-300 bg-slate-50/60'
-              }`}
-            >
-              <Ban className="h-6 w-6 text-red-400" />
-              <p className="mt-2 text-xs font-semibold text-slate-500">Drop here to cancel</p>
-              <p className="mt-1 text-[11px] text-slate-400">Requires a cancellation reason</p>
             </div>
           </div>
         </div>

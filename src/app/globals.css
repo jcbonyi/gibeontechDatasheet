@@ -132,8 +132,30 @@
     @apply status-report-issued;
   }
 
+  .task-board {
+    @apply relative rounded-2xl border border-slate-200/80 bg-slate-100/60;
+    /* Keep the horizontal scrollbar in the viewport — columns scroll vertically on their own */
+    max-height: calc(100vh - 13rem);
+    overflow-x: auto;
+    overflow-y: hidden;
+    overscroll-behavior-x: contain;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-gutter: stable;
+  }
+
+  .task-board-track {
+    @apply flex min-w-max gap-3 p-3 pb-4;
+    min-height: 100%;
+  }
+
   .task-column {
-    @apply w-64 shrink-0 rounded-2xl border border-slate-200/80 bg-slate-50/80 p-3;
+    @apply flex w-60 shrink-0 flex-col rounded-2xl border border-slate-200/80 bg-slate-50/90 p-3;
+    max-height: calc(100vh - 15rem);
+  }
+
+  .task-column-body {
+    @apply min-h-0 flex-1 space-y-2.5 overflow-y-auto pe-0.5;
+    scrollbar-gutter: stable;
   }
 
   .task-card {
@@ -143,6 +165,36 @@
 
   .task-card-overdue {
     @apply border-red-200 bg-red-50/70;
+  }
+
+  /* Always-visible scrollbars so hidden status columns are discoverable */
+  .task-board,
+  .task-column-body {
+    scrollbar-width: thin;
+    scrollbar-color: #94a3b8 #e2e8f0;
+  }
+
+  .task-board::-webkit-scrollbar,
+  .task-column-body::-webkit-scrollbar {
+    height: 10px;
+    width: 8px;
+  }
+
+  .task-board::-webkit-scrollbar-track,
+  .task-column-body::-webkit-scrollbar-track {
+    background: #e2e8f0;
+    border-radius: 999px;
+  }
+
+  .task-board::-webkit-scrollbar-thumb,
+  .task-column-body::-webkit-scrollbar-thumb {
+    background: #94a3b8;
+    border-radius: 999px;
+  }
+
+  .task-board::-webkit-scrollbar-thumb:hover,
+  .task-column-body::-webkit-scrollbar-thumb:hover {
+    background: #64748b;
   }
 
   .form-action-bar {
