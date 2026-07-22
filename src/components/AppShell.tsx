@@ -16,7 +16,10 @@ import { useAuth } from '@/context/AuthContext';
 import { Letterhead } from '@/components/Letterhead';
 import { COMPANY } from '@/constants/brand';
 import { canManageUsers } from '@/lib/permissions';
-import { canManageProductionAdmin } from '@/lib/productionPermissions';
+import {
+  canAccessProduction,
+  canManageProductionAdmin,
+} from '@/lib/productionPermissions';
 import { ROLE_LABELS } from '@/types/datasheet';
 import { KeyboardShortcuts } from '@/components/KeyboardShortcuts';
 
@@ -31,6 +34,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const isReports = pathname.startsWith('/reports');
   const isProduction = pathname.startsWith('/production');
   const isAdmin = pathname.startsWith('/admin');
+  const showProduction = Boolean(user && canAccessProduction(user));
 
   return (
     <div className="min-h-screen">
@@ -74,13 +78,15 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 <FileBarChart2 className="h-4 w-4" />
                 Reports
               </Link>
-              <Link
-                href="/production"
-                className={`nav-pill ${isProduction ? 'nav-pill-active' : 'nav-pill-idle'}`}
-              >
-                <Factory className="h-4 w-4" />
-                Production
-              </Link>
+              {showProduction && (
+                <Link
+                  href="/production"
+                  className={`nav-pill ${isProduction ? 'nav-pill-active' : 'nav-pill-idle'}`}
+                >
+                  <Factory className="h-4 w-4" />
+                  Production
+                </Link>
+              )}
               <Link href="/datasheets/new" className="nav-pill nav-pill-idle" title="Alt+N">
                 <Plus className="h-4 w-4" />
                 New

@@ -1,19 +1,19 @@
 import type { AuthUser } from '@/lib/auth';
 import type { UserRole } from '@/types/datasheet';
 
-/** Production module access mapped onto existing assessment roles. */
+/** Production module: Admin, Principal Officer, Operations Manager only. */
 export function canAccessProduction(user: AuthUser | null | undefined): boolean {
-  return Boolean(user);
-}
-
-/** Administrator / Manager: full register + reports + admin entities. */
-export function canManageProduction(user: AuthUser | null | undefined): boolean {
   if (!user) return false;
   return (
     user.role === 'Admin' ||
     user.role === 'PrincipalOfficer' ||
     user.role === 'OperationsManager'
   );
+}
+
+/** Full register + reports + import within Production. */
+export function canManageProduction(user: AuthUser | null | undefined): boolean {
+  return canAccessProduction(user);
 }
 
 export function canManageProductionAdmin(user: AuthUser | null | undefined): boolean {
