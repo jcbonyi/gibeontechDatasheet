@@ -23,12 +23,16 @@ interface EntryFormProps {
   initial?: Partial<{
     production_date: string;
     insurer_id: number;
+    insurer_name: string | null;
     registration_number: string;
     assignment?: AssignmentType | string | null;
     amount: number;
     done_by_user_id: number | null;
+    done_by_name: string | null;
     seen_by_user_id: number | null;
-    instructed_by_user_id: number | null;
+    seen_by_name: string | null;
+    instructed_by: string | null;
+    instructed_by_name: string | null;
     remarks: string;
     status: ProductionStatus;
   }>;
@@ -50,19 +54,52 @@ export function ProductionEntryForm({
   const [productionDate, setProductionDate] = useState(
     initial?.production_date || new Date().toISOString().slice(0, 10),
   );
-  const [insurerId, setInsurerId] = useState(String(initial?.insurer_id || ''));
+  const [insurerName, setInsurerName] = useState(
+    initial?.insurer_name ||
+      insurers.find((i) => i.id === initial?.insurer_id)?.name ||
+      '',
+  );
   const [regNo, setRegNo] = useState(initial?.registration_number || '');
   const [assignment, setAssignment] = useState(initial?.assignment || '');
   const [amount, setAmount] = useState(String(initial?.amount ?? ''));
-  const [doneBy, setDoneBy] = useState(String(initial?.done_by_user_id || ''));
-  const [seenBy, setSeenBy] = useState(String(initial?.seen_by_user_id || ''));
+  const [doneBy, setDoneBy] = useState(
+    initial?.done_by_name ||
+      users.find((u) => u.id === initial?.done_by_user_id)?.name ||
+      '',
+  );
+  const [seenBy, setSeenBy] = useState(
+    initial?.seen_by_name ||
+      users.find((u) => u.id === initial?.seen_by_user_id)?.name ||
+      '',
+  );
   const [instructedBy, setInstructedBy] = useState(
-    String(initial?.instructed_by_user_id || ''),
+    initial?.instructed_by || initial?.instructed_by_name || '',
   );
   const [remarks, setRemarks] = useState(initial?.remarks || '');
   const [status, setStatus] = useState<ProductionStatus>(initial?.status || 'completed');
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (!insurerName && initial?.insurer_id && insurers.length) {
+      const match = insurers.find((i) => i.id === initial.insurer_id);
+      if (match) setInsurerName(match.name);
+    }
+  }, [insurers, initial?.insurer_id, insurerName]);
+
+  useEffect(() => {
+    if (!doneBy && initial?.done_by_user_id && users.length) {
+      const match = users.find((u) => u.id === initial.done_by_user_id);
+      if (match) setDoneBy(match.name);
+    }
+  }, [users, initial?.done_by_user_id, doneBy]);
+
+  useEffect(() => {
+    if (!seenBy && initial?.seen_by_user_id && users.length) {
+      const match = users.find((u) => u.id === initial.seen_by_user_id);
+      if (match) setSeenBy(match.name);
+    }
+  }, [users, initial?.seen_by_user_id, seenBy]);
 
   const net = useMemo(() => {
     const n = Number(amount);
@@ -72,13 +109,13 @@ export function ProductionEntryForm({
 
   const payload = () => ({
     production_date: productionDate,
-    insurer_id: Number(insurerId),
+    insurer_name: insurerName.trim(),
     registration_number: regNo,
     assignment,
     amount: Number(amount),
-    done_by_user_id: doneBy ? Number(doneBy) : null,
-    seen_by_user_id: seenBy ? Number(seenBy) : null,
-    instructed_by_user_id: instructedBy ? Number(instructedBy) : null,
+    done_by_name: doneBy.trim() || null,
+    seen_by_name: seenBy.trim() || null,
+    instructed_by: instructedBy.trim() || null,
     remarks,
     status,
   });
@@ -138,19 +175,20 @@ export function ProductionEntryForm({
         </div>
         <div>
           <label className="form-label">Insurer</label>
-          <select
+          <input
             className="form-input"
-            value={insurerId}
-            onChange={(e) => setInsurerId(e.target.value)}
+            list="production-insurers"
+            value={insurerName}
+            onChange={(e) => setInsurerName(e.target.value)}
+            placeholder="Type or select insurer"
             required
-          >
-            <option value="">Select insurer…</option>
+          />
+          <datalist id="production-insurers">
             {insurers.map((i) => (
-              <option key={i.id} value={i.id}>
-                {i.name}
-              </option>
+              <option key={i.id} value={i.name} />
             ))}
-          </select>
+          </datalist>
+          <p className="mt-1 text-xs text-slate-500">New names are created automatically</p>
         </div>
         <div>
           <label className="form-label">Registration Number</label>
@@ -210,40 +248,42 @@ export function ProductionEntryForm({
         </div>
         <div>
           <label className="form-label">Done By</label>
-          <select className="form-input" value={doneBy} onChange={(e) => setDoneBy(e.target.value)}>
-            <option value="">—</option>
+          <input
+            className="form-input"
+            list="production-staff-done"
+            value={doneBy}
+            onChange={(e) => setDoneBy(e.target.value)}
+            placeholder="Staff name"
+          />
+          <datalist id="production-staff-done">
             {users.map((u) => (
-              <option key={u.id} value={u.id}>
-                {u.name}
-              </option>
+              <option key={u.id} value={u.name} />
             ))}
-          </select>
+          </datalist>
         </div>
         <div>
           <label className="form-label">Seen By</label>
-          <select className="form-input" value={seenBy} onChange={(e) => setSeenBy(e.target.value)}>
-            <option value="">—</option>
+          <input
+            className="form-input"
+            list="production-staff-seen"
+            value={seenBy}
+            onChange={(e) => setSeenBy(e.target.value)}
+            placeholder="Staff name"
+          />
+          <datalist id="production-staff-seen">
             {users.map((u) => (
-              <option key={u.id} value={u.id}>
-                {u.name}
-              </option>
+              <option key={u.id} value={u.name} />
             ))}
-          </select>
+          </datalist>
         </div>
         <div>
           <label className="form-label">Instructed By</label>
-          <select
+          <input
             className="form-input"
             value={instructedBy}
             onChange={(e) => setInstructedBy(e.target.value)}
-          >
-            <option value="">—</option>
-            {users.map((u) => (
-              <option key={u.id} value={u.id}>
-                {u.name}
-              </option>
-            ))}
-          </select>
+            placeholder="Name or desk"
+          />
         </div>
       </div>
       <div>

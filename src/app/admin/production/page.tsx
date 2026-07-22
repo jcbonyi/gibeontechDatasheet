@@ -18,6 +18,7 @@ export default function AdminProductionPage() {
     { id: number; period_type: string; period_key: string; target_jobs: number; target_amount: number }[]
   >([]);
   const [message, setMessage] = useState('');
+  const [wiping, setWiping] = useState(false);
 
   const load = () => {
     fetch('/api/production/targets')
@@ -70,6 +71,36 @@ export default function AdminProductionPage() {
     setMessage(res.ok ? 'Settings saved' : data.message || 'Failed');
   };
 
+  const wipeAll = async () => {
+    const ok = window.confirm(
+      'Delete ALL production entries, insurers, and targets? This cannot be undone. VAT settings are kept.',
+    );
+    if (!ok) return;
+    const typed = window.prompt('Type DELETE to confirm wiping all production data:');
+    if (typed !== 'DELETE') {
+      setMessage('Wipe cancelled');
+      return;
+    }
+    setWiping(true);
+    setMessage('');
+    try {
+      const res = await fetch('/api/production/wipe?confirm=DELETE_ALL_PRODUCTION', {
+        method: 'DELETE',
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setMessage(data.message || 'Wipe failed');
+        return;
+      }
+      setMessage(
+        `Wiped ${data.deleted?.entries ?? 0} entries, ${data.deleted?.insurers ?? 0} insurers, ${data.deleted?.targets ?? 0} targets. You can import fresh data now.`,
+      );
+      load();
+    } finally {
+      setWiping(false);
+    }
+  };
+
   return (
     <AuthGuard>
       <AppShell>
@@ -79,6 +110,7 @@ export default function AdminProductionPage() {
           <Link href="/admin/insurers" className="btn-secondary">Manage insurers</Link>
           <Link href="/admin/users" className="btn-secondary">User accounts</Link>
           <Link href="/production" className="btn-secondary">Production dashboard</Link>
+          <Link href="/production/entries" className="btn-secondary">Register &amp; import</Link>
         </div>
 
         {message && <p className="mt-4 text-sm text-emerald-600">{message}</p>}
@@ -143,6 +175,25 @@ export default function AdminProductionPage() {
             <button type="submit" className="btn-primary">Save settings</button>
           </form>
         </div>
+
+        {user?.role === 'Admin' && (
+          <div className="section-card mt-6 space-y-3 border-red-200 bg-red-50/40">
+            <h2 className="font-semibold text-red-800">Danger zone</h2>
+            <p className="text-sm text-red-700">
+              Delete all production entries, insurers, targets, and production notifications so you
+              can import data afresh. VAT settings are preserved. Auto-created user accounts are not
+              deleted.
+            </p>
+            <button
+              type="button"
+              className="rounded-lg bg-red-700 px-4 py-2 text-sm font-semibold text-white hover:bg-red-800 disabled:opacity-60"
+              disabled={wiping}
+              onClick={wipeAll}
+            >
+              {wiping ? 'Deleting…' : 'Delete all production data'}
+            </button>
+          </div>
+        )}
       </AppShell>
     </AuthGuard>
   );

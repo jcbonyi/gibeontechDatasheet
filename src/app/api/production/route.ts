@@ -10,6 +10,7 @@ import {
   createProductionEntry,
   listProductionEntries,
   listTargets,
+  resolveProductionPeople,
 } from '@/lib/productionDb';
 import { PRODUCTION_STATUSES, normalizeAssignment, type ProductionStatus } from '@/lib/productionConfig';
 import { buildProductionSummary } from '@/lib/productionAnalytics';
@@ -29,9 +30,7 @@ function parseFilters(req: NextRequest) {
     seenByUserId: searchParams.get('seenBy')
       ? Number(searchParams.get('seenBy'))
       : undefined,
-    instructedByUserId: searchParams.get('instructedBy')
-      ? Number(searchParams.get('instructedBy'))
-      : undefined,
+    instructedBy: searchParams.get('instructedBy') || undefined,
     registrationNumber: searchParams.get('regNo') || undefined,
     status: searchParams.get('status') || undefined,
     q: searchParams.get('q') || undefined,
@@ -63,13 +62,12 @@ export async function POST(req: NextRequest) {
 
     const body = await req.json();
     const production_date = String(body.production_date || '').slice(0, 10);
-    const insurer_id = Number(body.insurer_id);
     const registration_number = String(body.registration_number || '').trim();
     const amount = Number(body.amount);
     const status = String(body.status || 'completed') as ProductionStatus;
 
-    if (!production_date || !insurer_id || !registration_number) {
-      return badRequest('Date, insurer, and registration number are required');
+    if (!production_date || !registration_number) {
+      return badRequest('Date and registration number are required');
     }
     if (!Number.isFinite(amount) || amount < 0) return badRequest('Valid amount is required');
     if (!PRODUCTION_STATUSES.includes(status)) return badRequest('Invalid status');
@@ -81,18 +79,24 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    let people;
+    try {
+      people = await resolveProductionPeople(body);
+    } catch (e) {
+      return badRequest(e instanceof Error ? e.message : 'Invalid insurer or staff');
+    }
+
     const entry = await createProductionEntry(
       {
         production_date,
-        insurer_id,
+        insurer_id: people.insurer_id,
         registration_number,
         assignment,
         amount,
-        done_by_user_id: body.done_by_user_id ? Number(body.done_by_user_id) : null,
-        seen_by_user_id: body.seen_by_user_id ? Number(body.seen_by_user_id) : null,
-        instructed_by_user_id: body.instructed_by_user_id
-          ? Number(body.instructed_by_user_id)
-          : null,
+        done_by_user_id: people.done_by_user_id,
+        seen_by_user_id: people.seen_by_user_id,
+        instructed_by: people.instructed_by,
+        instructed_by_user_id: null,
         remarks: body.remarks,
         status,
       },

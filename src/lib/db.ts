@@ -350,6 +350,7 @@ async function initPostgres(): Promise<void> {
   await pool.query(`CREATE INDEX IF NOT EXISTS idx_production_insurer ON production_entries (insurer_id)`);
   await pool.query(`CREATE INDEX IF NOT EXISTS idx_production_reg ON production_entries (registration_number)`);
   await pool.query(`ALTER TABLE production_entries ADD COLUMN IF NOT EXISTS assignment TEXT`);
+  await pool.query(`ALTER TABLE production_entries ADD COLUMN IF NOT EXISTS instructed_by TEXT`);
   await pool.query(`
     CREATE TABLE IF NOT EXISTS production_targets (
       id SERIAL PRIMARY KEY,
@@ -1139,6 +1140,63 @@ export async function deleteDatasheetRecord(id: number): Promise<boolean> {
   if (!pool) throw new Error(dbConfigError());
   const result = await pool.query('DELETE FROM datasheets WHERE id = $1', [id]);
   return (result.rowCount || 0) > 0;
+}
+
+export async function createUserRecord(input: {
+  name: string;
+  email: string;
+  password_hash: string;
+  role: UserRole;
+  is_active?: boolean;
+}): Promise<Omit<DbUser, 'password_hash'>> {
+  await ensureDb();
+  const name = input.name.trim();
+  const email = input.email.trim().toLowerCase();
+  const is_active = input.is_active ?? true;
+
+  if (useJson && jsonStore) {
+    const id = Math.max(0, ...jsonStore.users.map((u) => u.id)) + 1;
+    const row: DbUser = {
+      id,
+      name,
+      email,
+      password_hash: input.password_hash,
+      role: input.role,
+      is_active,
+      created_at: new Date().toISOString(),
+    };
+    jsonStore.users.push(row);
+    saveJsonStore();
+    const { password_hash: _pw, ...safe } = row;
+    return safe;
+  }
+
+  if (useSupabase) {
+    const client = getSupabaseAdmin();
+    if (!client) throw new Error('Supabase client not initialized');
+    const { data, error } = await client
+      .from('users')
+      .insert({
+        name,
+        email,
+        password_hash: input.password_hash,
+        role: input.role,
+        is_active,
+      })
+      .select('id, name, email, role, is_active, created_at')
+      .single();
+    if (error) throw new Error(error.message);
+    return data as Omit<DbUser, 'password_hash'>;
+  }
+
+  if (!pool) throw new Error(dbConfigError());
+  const result = await pool.query<Omit<DbUser, 'password_hash'>>(
+    `INSERT INTO users (name, email, password_hash, role, is_active)
+     VALUES ($1, $2, $3, $4, $5)
+     RETURNING id, name, email, role, is_active, created_at`,
+    [name, email, input.password_hash, input.role, is_active],
+  );
+  return result.rows[0];
 }
 
 export async function updateUserRecord(

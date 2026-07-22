@@ -9,6 +9,7 @@ import {
 import {
   deleteProductionEntry,
   getProductionEntry,
+  resolveProductionPeople,
   updateProductionEntry,
 } from '@/lib/productionDb';
 import { PRODUCTION_STATUSES, normalizeAssignment, type ProductionStatus } from '@/lib/productionConfig';
@@ -45,7 +46,6 @@ export async function PATCH(
 
     const body = await req.json();
     const production_date = String(body.production_date || existing.production_date).slice(0, 10);
-    const insurer_id = Number(body.insurer_id ?? existing.insurer_id);
     const registration_number = String(
       body.registration_number ?? existing.registration_number,
     ).trim();
@@ -64,38 +64,63 @@ export async function PATCH(
       );
     }
 
-    if (!production_date || !insurer_id || !registration_number) {
-      return badRequest('Date, insurer, and registration number are required');
+    if (!production_date || !registration_number) {
+      return badRequest('Date and registration number are required');
     }
     if (!Number.isFinite(amount) || amount < 0) return badRequest('Valid amount is required');
     if (!PRODUCTION_STATUSES.includes(status)) return badRequest('Invalid status');
+
+    let people;
+    try {
+      people = await resolveProductionPeople({
+        insurer_id:
+          body.insurer_id !== undefined
+            ? body.insurer_id
+              ? Number(body.insurer_id)
+              : null
+            : existing.insurer_id,
+        insurer_name: body.insurer_name,
+        done_by_user_id:
+          body.done_by_name !== undefined
+            ? undefined
+            : body.done_by_user_id !== undefined
+              ? body.done_by_user_id
+                ? Number(body.done_by_user_id)
+                : null
+              : existing.done_by_user_id,
+        done_by_name: body.done_by_name,
+        seen_by_user_id:
+          body.seen_by_name !== undefined
+            ? undefined
+            : body.seen_by_user_id !== undefined
+              ? body.seen_by_user_id
+                ? Number(body.seen_by_user_id)
+                : null
+              : existing.seen_by_user_id,
+        seen_by_name: body.seen_by_name,
+        instructed_by:
+          body.instructed_by !== undefined
+            ? body.instructed_by
+            : body.instructed_by_name !== undefined
+              ? body.instructed_by_name
+              : existing.instructed_by || existing.instructed_by_name,
+      });
+    } catch (e) {
+      return badRequest(e instanceof Error ? e.message : 'Invalid insurer or staff');
+    }
 
     const entry = await updateProductionEntry(
       Number(id),
       {
         production_date,
-        insurer_id,
+        insurer_id: people.insurer_id,
         registration_number,
         assignment,
         amount,
-        done_by_user_id:
-          body.done_by_user_id !== undefined
-            ? body.done_by_user_id
-              ? Number(body.done_by_user_id)
-              : null
-            : existing.done_by_user_id,
-        seen_by_user_id:
-          body.seen_by_user_id !== undefined
-            ? body.seen_by_user_id
-              ? Number(body.seen_by_user_id)
-              : null
-            : existing.seen_by_user_id,
-        instructed_by_user_id:
-          body.instructed_by_user_id !== undefined
-            ? body.instructed_by_user_id
-              ? Number(body.instructed_by_user_id)
-              : null
-            : existing.instructed_by_user_id,
+        done_by_user_id: people.done_by_user_id,
+        seen_by_user_id: people.seen_by_user_id,
+        instructed_by: people.instructed_by,
+        instructed_by_user_id: null,
         remarks: body.remarks !== undefined ? body.remarks : existing.remarks,
         status,
       },

@@ -290,7 +290,6 @@ export function toEntryInput(
   insurerId: number,
   doneBy: number | null,
   seenBy: number | null,
-  instructedBy: number | null,
 ): ProductionEntryInput {
   return {
     production_date: row.production_date,
@@ -300,7 +299,8 @@ export function toEntryInput(
     amount: row.amount,
     done_by_user_id: doneBy,
     seen_by_user_id: seenBy,
-    instructed_by_user_id: instructedBy,
+    instructed_by: row.instructed_by_name?.trim() || null,
+    instructed_by_user_id: null,
     remarks: null,
     status: 'completed',
   };

@@ -236,7 +236,7 @@ export function ProductionRegister() {
           DATE · INSURER · REG NO · ASSIGNMENT · AMOUNT · WITHOUT VAT · DONE BY · SEEN BY ·
           INSTRUCTED BY
         </span>
-        . Missing insurers are created automatically. Staff names must match user accounts.
+        . Missing insurers and Done/Seen staff names are created automatically. Instructed By is free text.
       </div>
 
       <div className="section-card mb-4 !py-4">
@@ -287,12 +287,12 @@ export function ProductionRegister() {
               <option key={u.id} value={u.id}>{u.name}</option>
             ))}
           </select>
-          <select className="form-input" value={instructedBy} onChange={(e) => setInstructedBy(e.target.value)}>
-            <option value="">Instructed by — all</option>
-            {users.map((u) => (
-              <option key={u.id} value={u.id}>{u.name}</option>
-            ))}
-          </select>
+          <input
+            className="form-input"
+            placeholder="Instructed by…"
+            value={instructedBy}
+            onChange={(e) => setInstructedBy(e.target.value)}
+          />
           <select className="form-input" value={status} onChange={(e) => setStatus(e.target.value)}>
             <option value="">All statuses</option>
             <option value="pending">Pending</option>

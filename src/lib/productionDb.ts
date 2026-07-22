@@ -1,6 +1,8 @@
+import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
-import { ensureDb, isJsonMode, isSupabaseMode, query } from '@/lib/db';
+import { hashPassword } from '@/lib/auth';
+import { createUserRecord, ensureDb, isJsonMode, isSupabaseMode, query } from '@/lib/db';
 import { getSupabaseAdmin } from '@/lib/supabase';
 import { amountWithoutVat, normalizeAssignment, VAT_RATE, type ProductionStatus } from '@/lib/productionConfig';
 
@@ -25,6 +27,8 @@ export interface DbProductionEntry {
   done_by_user_id: number | null;
   seen_by_user_id: number | null;
   instructed_by_user_id: number | null;
+  /** Free-text Instructed By (preferred over instructed_by_user_id). */
+  instructed_by: string | null;
   remarks: string | null;
   status: ProductionStatus;
   created_by: number | null;
@@ -44,7 +48,7 @@ export interface ProductionListFilters {
   insurerId?: number;
   doneByUserId?: number;
   seenByUserId?: number;
-  instructedByUserId?: number;
+  instructedBy?: string;
   registrationNumber?: string;
   status?: string;
   q?: string;
@@ -170,11 +174,216 @@ function enrichEntry(
     insurer_name: insurers.get(row.insurer_id) || row.insurer_name || null,
     done_by_name: row.done_by_user_id ? users.get(row.done_by_user_id) || null : null,
     seen_by_name: row.seen_by_user_id ? users.get(row.seen_by_user_id) || null : null,
-    instructed_by_name: row.instructed_by_user_id
-      ? users.get(row.instructed_by_user_id) || null
-      : null,
+    instructed_by: row.instructed_by?.trim() || null,
+    instructed_by_name:
+      row.instructed_by?.trim() ||
+      (row.instructed_by_user_id ? users.get(row.instructed_by_user_id) || null : null),
     created_by_name: row.created_by ? users.get(row.created_by) || null : null,
   };
+}
+
+/** Match staff by name (case-insensitive); create Assessor account if missing. */
+export async function findOrCreateUserByName(
+  name: string | null | undefined,
+): Promise<{ id: number; name: string; created: boolean } | null> {
+  const trimmed = String(name || '').trim();
+  if (!trimmed) return null;
+  await ensureDb();
+
+  const result = await query<{ id: number; name: string }>(
+    'SELECT id, name FROM users ORDER BY name',
+  );
+  const needle = trimmed.toLowerCase();
+  const exact = result.rows.find((u) => u.name.trim().toLowerCase() === needle);
+  if (exact) return { id: exact.id, name: exact.name, created: false };
+
+  const partial = result.rows.filter(
+    (u) =>
+      u.name.trim().toLowerCase().includes(needle) ||
+      needle.includes(u.name.trim().toLowerCase()),
+  );
+  if (partial.length === 1) {
+    return { id: partial[0].id, name: partial[0].name, created: false };
+  }
+
+  const slug =
+    trimmed
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '.')
+      .replace(/^\.+|\.+$/g, '')
+      .slice(0, 40) || 'user';
+  const email = `${slug}.${Date.now()}.${crypto.randomBytes(3).toString('hex')}@production.local`;
+  const password_hash = await hashPassword(crypto.randomBytes(24).toString('hex'));
+  const created = await createUserRecord({
+    name: trimmed,
+    email,
+    password_hash,
+    role: 'Assessor',
+    is_active: true,
+  });
+  return { id: created.id, name: created.name, created: true };
+}
+
+export async function findOrCreateInsurerByName(name: string): Promise<{
+  insurer: DbInsurer;
+  created: boolean;
+}> {
+  const trimmed = name.trim();
+  if (!trimmed) throw new Error('Insurer name is required');
+  const existing = await listInsurers(false);
+  const found = existing.find((i) => i.name.trim().toLowerCase() === trimmed.toLowerCase());
+  if (found) {
+    if (!found.is_active) {
+      const insurer = await upsertInsurer({ id: found.id, name: found.name, is_active: true });
+      return { insurer, created: false };
+    }
+    return { insurer: found, created: false };
+  }
+  const insurer = await upsertInsurer({ name: trimmed, is_active: true });
+  return { insurer, created: true };
+}
+
+export async function wipeAllProductionData(): Promise<{
+  entries: number;
+  insurers: number;
+  targets: number;
+  notifications: number;
+}> {
+  await ensureDb();
+
+  if (isJsonMode()) {
+    const s = getStore();
+    const counts = {
+      entries: s.entries.length,
+      insurers: s.insurers.length,
+      targets: s.targets.length,
+      notifications: s.notifications.length,
+    };
+    s.entries = [];
+    s.insurers = [];
+    s.targets = [];
+    s.notifications = [];
+    s.entryCounter = 0;
+    s.insurerCounter = 0;
+    s.targetCounter = 0;
+    s.notificationCounter = 0;
+    saveStore();
+    return counts;
+  }
+
+  if (isSupabaseMode()) {
+    const client = getSupabaseAdmin();
+    if (!client) throw new Error('Supabase not configured');
+    const countExact = async (table: string) => {
+      const { count, error } = await client.from(table).select('*', { count: 'exact', head: true });
+      if (error) throw new Error(error.message);
+      return count || 0;
+    };
+    const entries = await countExact('production_entries');
+    const insurers = await countExact('insurers');
+    const targets = await countExact('production_targets');
+    const notifications = await countExact('app_notifications');
+    for (const table of [
+      'production_entries',
+      'insurers',
+      'production_targets',
+      'app_notifications',
+    ]) {
+      const { error } = await client.from(table).delete().neq('id', 0);
+      if (error) throw new Error(error.message);
+    }
+    return { entries, insurers, targets, notifications };
+  }
+
+  const entries = Number(
+    (await query<{ c: string }>(`SELECT COUNT(*)::text AS c FROM production_entries`)).rows[0]
+      ?.c || 0,
+  );
+  const insurers = Number(
+    (await query<{ c: string }>(`SELECT COUNT(*)::text AS c FROM insurers`)).rows[0]?.c || 0,
+  );
+  const targets = Number(
+    (await query<{ c: string }>(`SELECT COUNT(*)::text AS c FROM production_targets`)).rows[0]
+      ?.c || 0,
+  );
+  let notifications = 0;
+  try {
+    notifications = Number(
+      (await query<{ c: string }>(`SELECT COUNT(*)::text AS c FROM app_notifications`)).rows[0]
+        ?.c || 0,
+    );
+  } catch {
+    notifications = 0;
+  }
+  await query(`DELETE FROM production_entries`);
+  await query(`DELETE FROM insurers`);
+  await query(`DELETE FROM production_targets`);
+  try {
+    await query(`DELETE FROM app_notifications`);
+  } catch {
+    /* optional table */
+  }
+  return { entries, insurers, targets, notifications };
+}
+
+/** Resolve insurer + Done/Seen users from ids and/or names (auto-create missing). */
+export async function resolveProductionPeople(body: {
+  insurer_id?: number | null;
+  insurer_name?: string | null;
+  done_by_user_id?: number | null;
+  done_by_name?: string | null;
+  seen_by_user_id?: number | null;
+  seen_by_name?: string | null;
+  instructed_by?: string | null;
+  instructed_by_name?: string | null;
+}): Promise<{
+  insurer_id: number;
+  done_by_user_id: number | null;
+  seen_by_user_id: number | null;
+  instructed_by: string | null;
+}> {
+  let insurer_id = body.insurer_id ? Number(body.insurer_id) : 0;
+  const insurerName = String(body.insurer_name || '').trim();
+  if (insurerName) {
+    const { insurer } = await findOrCreateInsurerByName(insurerName);
+    insurer_id = insurer.id;
+  } else if (insurer_id) {
+    const insurers = await listInsurers(false);
+    if (!insurers.some((i) => i.id === insurer_id)) {
+      throw new Error('Insurer not found');
+    }
+  } else {
+    throw new Error('Insurer is required');
+  }
+
+  let done_by_user_id: number | null =
+    body.done_by_user_id != null && body.done_by_user_id !== undefined
+      ? Number(body.done_by_user_id)
+      : null;
+  const doneName = String(body.done_by_name || '').trim();
+  if (doneName) {
+    const u = await findOrCreateUserByName(doneName);
+    done_by_user_id = u?.id ?? null;
+  } else if (body.done_by_name != null) {
+    done_by_user_id = null;
+  }
+
+  let seen_by_user_id: number | null =
+    body.seen_by_user_id != null && body.seen_by_user_id !== undefined
+      ? Number(body.seen_by_user_id)
+      : null;
+  const seenName = String(body.seen_by_name || '').trim();
+  if (seenName) {
+    const u = await findOrCreateUserByName(seenName);
+    seen_by_user_id = u?.id ?? null;
+  } else if (body.seen_by_name != null) {
+    seen_by_user_id = null;
+  }
+
+  const instructed_by =
+    String(body.instructed_by || body.instructed_by_name || '').trim() || null;
+
+  return { insurer_id, done_by_user_id, seen_by_user_id, instructed_by };
 }
 
 export async function getVatRate(): Promise<number> {
@@ -360,8 +569,10 @@ function matchesFilters(row: DbProductionEntry, filters: ProductionListFilters):
   if (filters.insurerId && row.insurer_id !== filters.insurerId) return false;
   if (filters.doneByUserId && row.done_by_user_id !== filters.doneByUserId) return false;
   if (filters.seenByUserId && row.seen_by_user_id !== filters.seenByUserId) return false;
-  if (filters.instructedByUserId && row.instructed_by_user_id !== filters.instructedByUserId) {
-    return false;
+  if (filters.instructedBy) {
+    const needle = filters.instructedBy.trim().toLowerCase();
+    const hay = (row.instructed_by || row.instructed_by_name || '').toLowerCase();
+    if (!hay.includes(needle)) return false;
   }
   if (filters.status && row.status !== filters.status) return false;
   if (filters.createdByUserId && row.created_by !== filters.createdByUserId) return false;
@@ -457,10 +668,17 @@ export type ProductionEntryInput = {
   amount: number;
   done_by_user_id?: number | null;
   seen_by_user_id?: number | null;
+  instructed_by?: string | null;
   instructed_by_user_id?: number | null;
   remarks?: string | null;
   status?: ProductionStatus;
 };
+
+function instructedByText(input: ProductionEntryInput): string | null {
+  const text = input.instructed_by?.trim();
+  if (text) return text;
+  return null;
+}
 
 export async function createProductionEntry(
   input: ProductionEntryInput,
@@ -474,6 +692,7 @@ export async function createProductionEntry(
   const status = input.status || 'completed';
   const reg = input.registration_number.trim().toUpperCase();
   const assignment = normalizeAssignment(input.assignment);
+  const instructed_by = instructedByText(input);
 
   if (isJsonMode()) {
     const s = getStore();
@@ -490,6 +709,7 @@ export async function createProductionEntry(
       done_by_user_id: input.done_by_user_id ?? null,
       seen_by_user_id: input.seen_by_user_id ?? null,
       instructed_by_user_id: input.instructed_by_user_id ?? null,
+      instructed_by,
       remarks: input.remarks?.trim() || null,
       status,
       created_by: userId,
@@ -518,6 +738,7 @@ export async function createProductionEntry(
         done_by_user_id: input.done_by_user_id ?? null,
         seen_by_user_id: input.seen_by_user_id ?? null,
         instructed_by_user_id: input.instructed_by_user_id ?? null,
+        instructed_by,
         remarks: input.remarks?.trim() || null,
         status,
         created_by: userId,
@@ -532,9 +753,9 @@ export async function createProductionEntry(
   const result = await query<DbProductionEntry>(
     `INSERT INTO production_entries (
       production_date, insurer_id, registration_number, assignment, amount, amount_without_vat,
-      done_by_user_id, seen_by_user_id, instructed_by_user_id, remarks, status,
+      done_by_user_id, seen_by_user_id, instructed_by_user_id, instructed_by, remarks, status,
       created_by, updated_by
-    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING *`,
+    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING *`,
     [
       dateOnly(input.production_date),
       input.insurer_id,
@@ -545,6 +766,7 @@ export async function createProductionEntry(
       input.done_by_user_id ?? null,
       input.seen_by_user_id ?? null,
       input.instructed_by_user_id ?? null,
+      instructed_by,
       input.remarks?.trim() || null,
       status,
       userId,
@@ -566,6 +788,7 @@ export async function updateProductionEntry(
   const status = input.status || 'completed';
   const reg = input.registration_number.trim().toUpperCase();
   const assignment = normalizeAssignment(input.assignment);
+  const instructed_by = instructedByText(input);
   const now = new Date().toISOString();
 
   if (isJsonMode()) {
@@ -583,6 +806,7 @@ export async function updateProductionEntry(
       done_by_user_id: input.done_by_user_id ?? null,
       seen_by_user_id: input.seen_by_user_id ?? null,
       instructed_by_user_id: input.instructed_by_user_id ?? null,
+      instructed_by,
       remarks: input.remarks?.trim() || null,
       status,
       updated_by: userId,
@@ -607,6 +831,7 @@ export async function updateProductionEntry(
         done_by_user_id: input.done_by_user_id ?? null,
         seen_by_user_id: input.seen_by_user_id ?? null,
         instructed_by_user_id: input.instructed_by_user_id ?? null,
+        instructed_by,
         remarks: input.remarks?.trim() || null,
         status,
         updated_by: userId,
@@ -620,9 +845,9 @@ export async function updateProductionEntry(
   const result = await query<DbProductionEntry>(
     `UPDATE production_entries SET
       production_date=$1, insurer_id=$2, registration_number=$3, assignment=$4, amount=$5, amount_without_vat=$6,
-      done_by_user_id=$7, seen_by_user_id=$8, instructed_by_user_id=$9, remarks=$10, status=$11,
-      updated_by=$12, updated_at=NOW()
-     WHERE id=$13 RETURNING *`,
+      done_by_user_id=$7, seen_by_user_id=$8, instructed_by_user_id=$9, instructed_by=$10, remarks=$11, status=$12,
+      updated_by=$13, updated_at=NOW()
+     WHERE id=$14 RETURNING *`,
     [
       dateOnly(input.production_date),
       input.insurer_id,
@@ -633,6 +858,7 @@ export async function updateProductionEntry(
       input.done_by_user_id ?? null,
       input.seen_by_user_id ?? null,
       input.instructed_by_user_id ?? null,
+      instructed_by,
       input.remarks?.trim() || null,
       status,
       userId,

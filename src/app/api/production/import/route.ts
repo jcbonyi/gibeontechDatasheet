@@ -2,15 +2,13 @@ import { NextRequest, NextResponse } from 'next/server';
 import { badRequest, forbidden, getAuthUser, unauthorized } from '@/lib/api';
 import { handleRouteError } from '@/lib/routeErrors';
 import { canManageProduction } from '@/lib/productionPermissions';
-import { getActiveUsers } from '@/lib/db';
 import {
   createProductionEntry,
-  listInsurers,
-  upsertInsurer,
+  findOrCreateInsurerByName,
+  findOrCreateUserByName,
 } from '@/lib/productionDb';
 import {
   buildImportTemplateBuffer,
-  matchUserId,
   parseProductionWorkbook,
   toEntryInput,
 } from '@/lib/productionImport';
@@ -61,38 +59,39 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const insurers = await listInsurers(false);
-    const insurerByName = new Map(
-      insurers.map((i) => [i.name.trim().toLowerCase(), i]),
-    );
-    const staff = (await getActiveUsers()).map((u) => ({ id: u.id, name: u.name }));
-
     let imported = 0;
     const errors = [...parsed.errors];
     const warnings: { row: number; message: string }[] = [];
 
     for (const row of parsed.rows) {
       try {
-        const key = row.insurer_name.trim().toLowerCase();
-        let insurer = insurerByName.get(key);
-        if (!insurer) {
-          insurer = await upsertInsurer({ name: row.insurer_name.trim(), is_active: true });
-          insurerByName.set(key, insurer);
+        const { insurer, created: insurerCreated } = await findOrCreateInsurerByName(
+          row.insurer_name,
+        );
+        if (insurerCreated) {
           warnings.push({
             row: row.rowNumber,
             message: `Created insurer "${insurer.name}"`,
           });
         }
 
-        const done = matchUserId(row.done_by_name, staff);
-        const seen = matchUserId(row.seen_by_name, staff);
-        const instructed = matchUserId(row.instructed_by_name, staff);
-        for (const m of [done, seen, instructed]) {
-          if (m.warning) warnings.push({ row: row.rowNumber, message: m.warning });
+        const done = await findOrCreateUserByName(row.done_by_name);
+        if (done?.created) {
+          warnings.push({
+            row: row.rowNumber,
+            message: `Created user "${done.name}" (Done By)`,
+          });
+        }
+        const seen = await findOrCreateUserByName(row.seen_by_name);
+        if (seen?.created) {
+          warnings.push({
+            row: row.rowNumber,
+            message: `Created user "${seen.name}" (Seen By)`,
+          });
         }
 
         await createProductionEntry(
-          toEntryInput(row, insurer.id, done.id, seen.id, instructed.id),
+          toEntryInput(row, insurer.id, done?.id ?? null, seen?.id ?? null),
           user.id,
         );
         imported += 1;

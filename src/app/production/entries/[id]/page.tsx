@@ -48,8 +48,14 @@ export default function EditProductionEntryPage() {
                 assignment: initial.assignment != null ? String(initial.assignment) : '',
                 amount: Number(initial.amount),
                 done_by_user_id: (initial.done_by_user_id as number | null) ?? null,
+                done_by_name: (initial.done_by_name as string | null) ?? null,
                 seen_by_user_id: (initial.seen_by_user_id as number | null) ?? null,
-                instructed_by_user_id: (initial.instructed_by_user_id as number | null) ?? null,
+                seen_by_name: (initial.seen_by_name as string | null) ?? null,
+                instructed_by:
+                  (initial.instructed_by as string | null) ||
+                  (initial.instructed_by_name as string | null) ||
+                  null,
+                insurer_name: (initial.insurer_name as string | null) ?? null,
                 remarks: String(initial.remarks || ''),
                 status: initial.status as ProductionStatus,
               }}
