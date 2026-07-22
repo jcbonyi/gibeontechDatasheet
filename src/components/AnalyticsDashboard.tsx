@@ -703,6 +703,7 @@ export function AnalyticsDashboard() {
             <div className="section-card">
               <h3 className="mb-4 text-sm font-semibold text-brand-800">Pipeline by status</h3>
               <SimpleBarChart
+                hideEmpty
                 items={summary.byStatus
                   .filter((s) => s.count > 0)
                   .map((s) => ({
@@ -714,6 +715,7 @@ export function AnalyticsDashboard() {
             <div className="section-card">
               <h3 className="mb-4 text-sm font-semibold text-brand-800">Ageing by instruction date</h3>
               <SimpleBarChart
+                hideEmpty
                 items={summary.byAgeBand.map((b) => ({
                   label: b.label,
                   value: b.count,

@@ -11,28 +11,44 @@ const DEFAULT_COLORS = ['#3F3D99', '#26A69A', '#0EA5E9', '#8B5CF6', '#F59E0B', '
 export function SimpleBarChart({
   items,
   height = 180,
+  hideEmpty = false,
 }: {
   items: BarItem[];
   height?: number;
+  /** When true, omit categories with value 0 */
+  hideEmpty?: boolean;
 }) {
-  const max = Math.max(...items.map((i) => i.value), 1);
+  const visible = hideEmpty ? items.filter((i) => i.value > 0) : items;
+  if (!visible.length) {
+    return <p className="py-8 text-center text-sm text-slate-500">No data for this period.</p>;
+  }
+
+  const max = Math.max(...visible.map((i) => i.value), 1);
+  const trackH = Math.max(height - 52, 96);
 
   return (
-    <div className="flex h-full items-end gap-2" style={{ minHeight: height }}>
-      {items.map((item, idx) => {
-        const pct = (item.value / max) * 100;
+    <div className="flex items-end gap-2" style={{ minHeight: height }}>
+      {visible.map((item, idx) => {
+        const barH =
+          item.value <= 0 ? 0 : Math.max(6, Math.round((item.value / max) * trackH));
         const color = item.color || DEFAULT_COLORS[idx % DEFAULT_COLORS.length];
         return (
-          <div key={item.label} className="flex min-w-0 flex-1 flex-col items-center gap-1">
-            <span className="text-xs font-semibold text-slate-700">{item.value}</span>
-            <div className="flex w-full flex-1 items-end justify-center rounded-t bg-slate-100" style={{ minHeight: height - 40 }}>
+          <div key={item.label} className="flex min-w-0 flex-1 flex-col items-center gap-1.5">
+            <span className="text-xs font-semibold tabular-nums text-slate-700">{item.value}</span>
+            <div
+              className="flex w-full items-end justify-center rounded-t bg-slate-100"
+              style={{ height: trackH }}
+            >
               <div
                 className="w-full max-w-[48px] rounded-t transition-all"
-                style={{ height: `${Math.max(pct, item.value > 0 ? 6 : 0)}%`, backgroundColor: color }}
+                style={{ height: barH, backgroundColor: color }}
                 title={`${item.label}: ${item.value}`}
               />
             </div>
-            <span className="w-full truncate text-center text-[10px] font-medium uppercase tracking-wide text-slate-500">
+            <span
+              className="w-full text-center text-[10px] font-medium uppercase leading-tight tracking-wide text-slate-500"
+              title={item.label}
+            >
               {item.label}
             </span>
           </div>
@@ -54,7 +70,7 @@ export function SimpleHorizontalBars({ items }: { items: BarItem[] }) {
           <div key={item.label}>
             <div className="mb-1 flex items-center justify-between gap-2 text-xs">
               <span className="truncate font-medium text-slate-700">{item.label}</span>
-              <span className="shrink-0 font-semibold text-slate-800">{item.value}</span>
+              <span className="shrink-0 font-semibold tabular-nums text-slate-800">{item.value}</span>
             </div>
             <div className="h-2 overflow-hidden rounded-full bg-slate-100">
               <div
@@ -119,9 +135,9 @@ export function SimpleLineChart({
         <span className="inline-flex items-center gap-1.5">
           <span className="h-2 w-2 rounded-full bg-brand-700" /> Created
         </span>
-          <span className="inline-flex items-center gap-1.5">
-            <span className="h-2 w-2 rounded-full bg-accent-600" /> Reports issued
-          </span>
+        <span className="inline-flex items-center gap-1.5">
+          <span className="h-2 w-2 rounded-full bg-accent-600" /> Reports issued
+        </span>
       </div>
     </div>
   );
