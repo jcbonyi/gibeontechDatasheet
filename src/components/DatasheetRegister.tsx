@@ -204,7 +204,7 @@ export function DatasheetRegister() {
         status: col,
         label: STATUS_LABELS[col],
         items: filtered.filter((d) => d.status === col),
-      })),
+      })).filter((col) => col.items.length > 0),
     [filtered],
   );
 
@@ -706,9 +706,12 @@ export function DatasheetRegister() {
         <div className="space-y-2">
           <div className="flex flex-wrap items-center justify-between gap-2 px-0.5">
             <p className="text-xs text-slate-500">
-              <span className="font-semibold text-slate-700">{BOARD_STATUSES.length} status columns</span>
+              <span className="font-semibold text-slate-700">
+                {boardColumns.length} status column{boardColumns.length === 1 ? '' : 's'}
+              </span>
               {' · '}
-              scroll horizontally to see all stages (Pending review, Under review, Queried, …)
+              empty stages are hidden
+              {canScrollRight ? ' · scroll for more' : ''}
             </p>
             <div className="flex items-center gap-1.5">
               <button
@@ -741,6 +744,11 @@ export function DatasheetRegister() {
           </div>
 
           <div ref={boardScrollRef} className="task-board" data-shortcut="task-board">
+            {boardColumns.length === 0 ? (
+              <div className="flex min-h-[12rem] items-center justify-center p-6 text-center">
+                <p className="text-sm text-slate-500">No open tasks in any stage for this filter.</p>
+              </div>
+            ) : (
             <div className="task-board-track">
               {boardColumns.map((col) => (
                 <div
@@ -766,11 +774,6 @@ export function DatasheetRegister() {
                     </span>
                   </div>
                   <div className="task-column-body">
-                    {col.items.length === 0 && (
-                      <p className="rounded-lg border border-dashed border-slate-200 px-3 py-6 text-center text-xs text-slate-400">
-                        No tasks
-                      </p>
-                    )}
                     {col.items.map((row) => renderCard(row))}
                   </div>
                 </div>
@@ -795,6 +798,7 @@ export function DatasheetRegister() {
                 <p className="mt-1 text-[11px] text-slate-400">Requires a cancellation reason</p>
               </div>
             </div>
+            )}
           </div>
         </div>
       ) : (
