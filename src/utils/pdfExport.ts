@@ -142,8 +142,8 @@ async function drawHeader(
   pdf.setFont('helvetica', 'normal');
   pdf.setFontSize(5.8);
   pdf.setTextColor(INK.r, INK.g, INK.b);
-  const docLines = pdf.splitTextToSize(data.basicInfo.documentsProvided || ' ', CW - 1.6);
-  pdf.text(docLines.slice(0, 2).join(' '), ML + 0.8, y + HEADER_BAND_H + 2.4);
+  const docLines = pdf.splitTextToSize(data.basicInfo.documentsProvided || ' ', CW - 1.6) as string[];
+  pdf.text(docLines.slice(0, 2), ML + 0.8, y + HEADER_BAND_H + 2.4);
 
   return y + 10;
 }
@@ -327,7 +327,11 @@ function drawDamageSection(
   pdf.setFont('helvetica', 'normal');
   pdf.setFontSize(5.5);
   pdf.setTextColor(INK.r, INK.g, INK.b);
-  pdf.text(pdf.splitTextToSize(data.damage.damageSummary || ' ', leftW - 1.6).slice(0, 3).join(' '), ML + 0.8, y + HEADER_BAND_H + 2.2);
+  pdf.text(
+    (pdf.splitTextToSize(data.damage.damageSummary || ' ', leftW - 1.6) as string[]).slice(0, 5),
+    ML + 0.8,
+    y + HEADER_BAND_H + 2.2,
+  );
 
   drawVehicleDiagram(pdf, data.damage.vehicleDiagram, ML + leftW, y, rightW, boxH * 2 + gap, diagramImage);
 
@@ -336,7 +340,11 @@ function drawDamageSection(
   drawFieldHeader(pdf, ML, y2, leftW, 'Pre-Accident Defects');
   pdf.setFont('helvetica', 'normal');
   pdf.setFontSize(5.5);
-  pdf.text(pdf.splitTextToSize(data.damage.preAccidentDefects || ' ', leftW - 1.6).slice(0, 3).join(' '), ML + 0.8, y2 + HEADER_BAND_H + 2.2);
+  pdf.text(
+    (pdf.splitTextToSize(data.damage.preAccidentDefects || ' ', leftW - 1.6) as string[]).slice(0, 5),
+    ML + 0.8,
+    y2 + HEADER_BAND_H + 2.2,
+  );
 
   const y3 = y2 + boxH + gap;
   pdf.setFont('helvetica', 'bold');
@@ -351,20 +359,32 @@ function drawDamageSection(
 
   const y4 = y3 + 5 + gap;
   const partW = (CW - gap * 2) / 3;
-  const partH = 10;
+  const partPadX = 0.8;
+  const partLineH = 2.35;
+  const partMinBodyH = 6;
+  const partMaxLines = 14;
   const partFields: [string, string][] = [
     ['Parts to be Replaced', data.parts?.toBeReplaced ?? ''],
     ['Parts to be Painted', data.parts?.toBePainted ?? ''],
     ['Parts to be Repaired', data.parts?.toBeRepaired ?? ''],
   ];
-  partFields.forEach(([label, value], i) => {
+
+  pdf.setFont('helvetica', 'normal');
+  pdf.setFontSize(5);
+  const partLines = partFields.map(([, value]) =>
+    (pdf.splitTextToSize(value || ' ', partW - partPadX * 2) as string[]).slice(0, partMaxLines),
+  );
+  const partLineCount = Math.max(1, ...partLines.map((lines) => lines.length));
+  const partH = HEADER_BAND_H + Math.max(partMinBodyH, partLineCount * partLineH + 1.2);
+
+  partFields.forEach(([label], i) => {
     const x = ML + i * (partW + gap);
     drawBox(pdf, x, y4, partW, partH);
     drawFieldHeader(pdf, x, y4, partW, label);
     pdf.setFont('helvetica', 'normal');
     pdf.setFontSize(5);
     pdf.setTextColor(INK.r, INK.g, INK.b);
-    pdf.text(pdf.splitTextToSize(value || ' ', partW - 1.6).slice(0, 2).join(' '), x + 0.8, y4 + HEADER_BAND_H + 2.2);
+    pdf.text(partLines[i], x + partPadX, y4 + HEADER_BAND_H + 2.2);
   });
 
   return y4 + partH + 2;
@@ -379,7 +399,11 @@ function drawRemarksAndDocs(pdf: jsPDF, data: DatasheetFormData, y: number): num
   pdf.setFont('helvetica', 'normal');
   pdf.setFontSize(5.3);
   pdf.setTextColor(INK.r, INK.g, INK.b);
-  pdf.text(pdf.splitTextToSize(data.remarks || ' ', CW - 1.6).slice(0, 3).join(' '), ML + 0.8, y + HEADER_BAND_H + 2.2);
+  pdf.text(
+    (pdf.splitTextToSize(data.remarks || ' ', CW - 1.6) as string[]).slice(0, 3),
+    ML + 0.8,
+    y + HEADER_BAND_H + 2.2,
+  );
 
   y += h + gap;
   drawBox(pdf, ML, y, CW, 7);
