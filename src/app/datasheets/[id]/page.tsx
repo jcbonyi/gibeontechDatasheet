@@ -13,6 +13,8 @@ import { useAuth } from '@/context/AuthContext';
 import { fetchJson } from '@/lib/fetchJson';
 import { canAssignDatasheet, canDeleteDatasheet } from '@/lib/permissions';
 import { Trash2, UserPlus } from 'lucide-react';
+import { DelayNotesPanel } from '@/components/DelayNotesPanel';
+import { normalizeDelayNotes, type DelayNote } from '@/lib/opsConfig';
 
 interface WorkflowAction {
   status: DatasheetStatus;
@@ -51,6 +53,7 @@ export default function EditDatasheetPage() {
   const [assignedToName, setAssignedToName] = useState<string | null>(null);
   const [permissions, setPermissions] = useState<DatasheetPermissions | null>(null);
   const [audit, setAudit] = useState<AuditEntry[]>([]);
+  const [delayNotes, setDelayNotes] = useState<DelayNote[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [actionMessage, setActionMessage] = useState('');
@@ -68,6 +71,7 @@ export default function EditDatasheetPage() {
         serial_no: string;
         status: DatasheetStatus;
         assigned_to_name?: string | null;
+        delay_notes?: unknown;
       };
       permissions: DatasheetPermissions;
       audit: AuditEntry[];
@@ -84,6 +88,7 @@ export default function EditDatasheetPage() {
         setAssignedToName(data.datasheet.assigned_to_name || null);
         setPermissions(data.permissions);
         setAudit(data.audit || []);
+        setDelayNotes(normalizeDelayNotes(data.datasheet.delay_notes));
       })
       .catch((err) => setError(err.message))
       .finally(() => setLoading(false));
@@ -333,26 +338,45 @@ export default function EditDatasheetPage() {
           {actionMessage && <p className="mt-3 text-sm text-emerald-600">{actionMessage}</p>}
         </div>
 
+        <DelayNotesPanel
+          datasheetId={id}
+          notes={delayNotes}
+          onUpdated={(notes) => {
+            setDelayNotes(notes);
+            setActionMessage('Delay note saved');
+            reload();
+          }}
+        />
+
         {audit.length > 0 && (
           <div className="section-card mb-6">
             <h3 className="mb-3 text-sm font-semibold text-slate-700">Activity timeline</h3>
             <ul className="space-y-2 text-sm text-slate-600">
-              {audit.slice(0, 10).map((entry) => {
+              {audit.slice(0, 12).map((entry) => {
                 const toLabel =
                   typeof entry.details?.label === 'string'
                     ? entry.details.label
                     : typeof entry.details?.to === 'string'
                       ? STATUS_LABELS[entry.details.to as DatasheetStatus] || entry.details.to
                       : null;
+                const delaySnippet =
+                  entry.action === 'delay_note' && typeof entry.details?.note === 'string'
+                    ? entry.details.note
+                    : null;
                 return (
                   <li key={entry.id} className="flex flex-wrap gap-x-2 border-l-2 border-brand-200 pl-3">
                     <span className="font-medium text-slate-800">
                       {entry.action === 'status_changed' && toLabel
                         ? `Status → ${toLabel}`
-                        : entry.action}
+                        : entry.action === 'delay_note'
+                          ? 'Delay note added'
+                          : entry.action}
                     </span>
                     <span>· {entry.user_name || 'System'}</span>
                     <span className="text-slate-400">· {new Date(entry.created_at).toLocaleString()}</span>
+                    {delaySnippet && (
+                      <span className="w-full text-xs text-amber-900/80">“{delaySnippet}”</span>
+                    )}
                   </li>
                 );
               })}

@@ -55,6 +55,7 @@ export async function POST(
           reviewed_by: null,
           reviewed_at: null,
           search_text: source.search_text ?? null,
+          delay_notes: [],
         });
         break;
       } catch (err) {

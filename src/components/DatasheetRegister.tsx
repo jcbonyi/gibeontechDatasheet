@@ -16,6 +16,7 @@ import {
   List,
   Plus,
   Search,
+  StickyNote,
   Trash2,
   UserPlus,
   X,
@@ -31,7 +32,7 @@ import {
 } from '@/lib/status';
 import type { AgeBand } from '@/lib/tracking';
 import { SLA_DAYS } from '@/lib/tracking';
-import { CANCEL_REASONS, SAVED_VIEWS, type SavedViewId } from '@/lib/opsConfig';
+import { CANCEL_REASONS, SAVED_VIEWS, normalizeDelayNotes, type SavedViewId } from '@/lib/opsConfig';
 import { StatusBadge } from '@/components/StatusBadge';
 
 interface DatasheetRow {
@@ -52,6 +53,8 @@ interface DatasheetRow {
   is_overdue: boolean;
   client_insurer: string | null;
   form_types: string[];
+  delay_notes?: unknown;
+  delayNoteCount?: number;
 }
 
 interface AssessorOption {
@@ -133,7 +136,11 @@ export function DatasheetRegister() {
     const params = filterParams();
     const res = await fetch(`/api/datasheets?${params}`);
     const data = await res.json();
-    setDatasheets(data.datasheets || []);
+    const rows = (data.datasheets || []).map((row: DatasheetRow) => ({
+      ...row,
+      delayNoteCount: normalizeDelayNotes(row.delay_notes).length,
+    }));
+    setDatasheets(rows);
     setLoading(false);
   }, [filterParams]);
 
@@ -385,15 +392,26 @@ export function DatasheetRegister() {
       >
         <div className="flex items-start justify-between gap-2">
           <p className="font-semibold text-brand-800">{row.serial_no}</p>
-          {row.age_days != null && (
-            <span
-              className={`shrink-0 rounded-full px-1.5 py-0.5 text-[11px] font-semibold ${
-                row.age_days > SLA_DAYS ? 'bg-red-100 text-red-700' : 'bg-slate-100 text-slate-500'
-              }`}
-            >
-              {row.age_days}d
-            </span>
-          )}
+          <div className="flex shrink-0 items-center gap-1">
+            {(row.delayNoteCount ?? 0) > 0 && (
+              <span
+                className="inline-flex items-center gap-0.5 rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-900"
+                title={`${row.delayNoteCount} delay note(s)`}
+              >
+                <StickyNote className="h-3 w-3" />
+                {row.delayNoteCount}
+              </span>
+            )}
+            {row.age_days != null && (
+              <span
+                className={`rounded-full px-1.5 py-0.5 text-[11px] font-semibold ${
+                  row.age_days > SLA_DAYS ? 'bg-red-100 text-red-700' : 'bg-slate-100 text-slate-500'
+                }`}
+              >
+                {row.age_days}d
+              </span>
+            )}
+          </div>
         </div>
         <p className="mt-1 truncate text-sm text-slate-700">
           {row.claim_no || 'No claim no.'} · {row.reg_no || '—'}
@@ -459,6 +477,40 @@ export function DatasheetRegister() {
             Delete
           </button>
         )}
+        <button
+          type="button"
+          className="mt-2 inline-flex items-center gap-1 text-[11px] font-medium text-amber-800 hover:text-amber-950"
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            const note = window.prompt(
+              'Delay reason note (min 3 characters).\nCategory will be recorded as Other — open the task to pick a specific category.',
+            );
+            if (note === null || note.trim().length < 3) {
+              if (note !== null) alert('Please enter at least 3 characters.');
+              return;
+            }
+            fetch(`/api/datasheets/${row.id}/delay-notes`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ reasonCode: 'other', note: note.trim() }),
+            })
+              .then(async (res) => {
+                const data = await res.json().catch(() => ({}));
+                if (!res.ok) {
+                  alert(data.message || 'Failed to save delay note');
+                  return;
+                }
+                setActionMessage('Delay note saved');
+                load();
+              })
+              .catch(() => alert('Failed to save delay note'));
+          }}
+          onMouseDown={(e) => e.stopPropagation()}
+        >
+          <StickyNote className="h-3 w-3" />
+          Delay note
+        </button>
       </div>
     );
   };

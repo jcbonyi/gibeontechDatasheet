@@ -19,6 +19,7 @@ import {
 import { useAuth } from '@/context/AuthContext';
 import { canViewAllDatasheets } from '@/lib/permissions';
 import {
+  AT_RISK_FROM_DAY,
   SLA_DAYS,
   type AnalyticsSummary,
   type QueuePriority,
@@ -411,7 +412,7 @@ export function AnalyticsDashboard() {
               </div>
               <p className="mt-2 text-3xl font-bold text-amber-700">{decisions?.atRisk ?? 0}</p>
               <p className="mt-1 text-xs text-slate-500">
-                Days 5–{SLA_DAYS} · chase before breach
+                Days {AT_RISK_FROM_DAY}–{SLA_DAYS} · chase before breach
               </p>
               <p className="mt-2 text-xs font-medium text-brand-700 opacity-0 transition group-hover:opacity-100">
                 Open at-risk queue →

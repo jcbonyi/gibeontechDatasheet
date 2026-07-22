@@ -36,6 +36,7 @@ export interface DbDatasheet {
   reviewed_by?: number | null;
   reviewed_at?: string | null;
   search_text?: string | null;
+  delay_notes?: unknown;
   created_at: string;
   updated_at: string;
 }
@@ -269,6 +270,9 @@ async function initPostgres(): Promise<void> {
   await pool.query(`ALTER TABLE datasheets ADD COLUMN IF NOT EXISTS reviewed_by INTEGER REFERENCES users(id) ON DELETE SET NULL`);
   await pool.query(`ALTER TABLE datasheets ADD COLUMN IF NOT EXISTS reviewed_at TIMESTAMPTZ`);
   await pool.query(`ALTER TABLE datasheets ADD COLUMN IF NOT EXISTS search_text TEXT`);
+  await pool.query(
+    `ALTER TABLE datasheets ADD COLUMN IF NOT EXISTS delay_notes JSONB NOT NULL DEFAULT '[]'::jsonb`,
+  );
   await pool.query(`
     CREATE TABLE IF NOT EXISTS media_assets (
       id SERIAL PRIMARY KEY,
@@ -961,6 +965,7 @@ export async function updateDatasheetRecord(
       | 'reviewed_by'
       | 'reviewed_at'
       | 'search_text'
+      | 'delay_notes'
     >
   >,
 ): Promise<DbDatasheet | null> {
@@ -996,7 +1001,9 @@ export async function updateDatasheetRecord(
   const fields: string[] = [];
   const values: unknown[] = [];
   Object.entries({ ...patch, updated_at }).forEach(([key, value]) => {
-    values.push(key === 'form_data' ? JSON.stringify(value) : value);
+    values.push(
+      key === 'form_data' || key === 'delay_notes' ? JSON.stringify(value) : value,
+    );
     fields.push(`${key} = $${values.length}`);
   });
   values.push(id);
@@ -1193,6 +1200,7 @@ export async function insertDatasheetRecord(
         reviewed_by: row.reviewed_by ?? null,
         reviewed_at: row.reviewed_at ?? null,
         search_text: row.search_text ?? null,
+        delay_notes: row.delay_notes ?? [],
       })
       .select()
       .single();
@@ -1206,8 +1214,8 @@ export async function insertDatasheetRecord(
       serial_no, status, created_by, updated_by, form_data, claim_no, reg_no,
       assigned_to, assigned_by, assigned_at, reopen_reason,
       date_of_instruction, client_insurer, form_types, cancel_reason, query_reason,
-      reviewed_by, reviewed_at, search_text
-    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19) RETURNING *`,
+      reviewed_by, reviewed_at, search_text, delay_notes
+    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20) RETURNING *`,
     [
       row.serial_no,
       row.status,
@@ -1228,6 +1236,7 @@ export async function insertDatasheetRecord(
       row.reviewed_by ?? null,
       row.reviewed_at ?? null,
       row.search_text ?? null,
+      JSON.stringify(row.delay_notes ?? []),
     ],
   );
   return result.rows[0];

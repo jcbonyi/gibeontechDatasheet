@@ -14,7 +14,10 @@ export const AGE_BAND_LABELS: Record<AgeBand, string> = {
   unknown: 'No instruction date',
 };
 
-export const SLA_DAYS = 7;
+export const SLA_DAYS = 2;
+
+/** Days from instruction when open work should be chased before SLA breach. */
+export const AT_RISK_FROM_DAY = 1;
 
 export interface TrackingFields {
   date_of_instruction: string | null;
@@ -92,9 +95,6 @@ export interface AnalyticsSummary {
     priority: QueuePriority;
   }[];
 }
-
-/** Days remaining before SLA breach — open tasks in this band need chasing. */
-export const AT_RISK_FROM_DAY = 5;
 
 export function queuePriorityFor(row: {
   status: DatasheetStatus;

@@ -15,6 +15,63 @@ export function cancelReasonLabel(code: string | null | undefined): string {
   return CANCEL_REASONS.find((r) => r.value === code)?.label || code || '—';
 }
 
+/** Common reasons a file is delayed past / approaching SLA. */
+export const DELAY_REASONS = [
+  { value: 'awaiting_documents', label: 'Awaiting documents from client / insurer' },
+  { value: 'awaiting_access', label: 'Awaiting vehicle / site access' },
+  { value: 'workshop_delay', label: 'Workshop / repairer delay' },
+  { value: 'insurer_query', label: 'Awaiting insurer response / clarification' },
+  { value: 'assessor_capacity', label: 'Assessor capacity / scheduling' },
+  { value: 'parts_unavailable', label: 'Parts unavailable' },
+  { value: 'third_party', label: 'Third-party / police / authority delay' },
+  { value: 'other', label: 'Other (see note)' },
+] as const;
+
+export type DelayReasonCode = (typeof DELAY_REASONS)[number]['value'];
+
+export function delayReasonLabel(code: string | null | undefined): string {
+  return DELAY_REASONS.find((r) => r.value === code)?.label || code || '—';
+}
+
+export interface DelayNote {
+  id: string;
+  note: string;
+  reasonCode: DelayReasonCode | string;
+  createdBy: number | null;
+  createdByName: string;
+  createdAt: string;
+  ageDaysAtNote: number | null;
+}
+
+export function normalizeDelayNotes(raw: unknown): DelayNote[] {
+  if (!raw) return [];
+  let parsed = raw;
+  if (typeof raw === 'string') {
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      return [];
+    }
+  }
+  if (!Array.isArray(parsed)) return [];
+  return parsed
+    .filter((n) => n && typeof n === 'object' && typeof (n as DelayNote).note === 'string')
+    .map((n) => {
+      const item = n as DelayNote;
+      return {
+        id: String(item.id || `${item.createdAt}-${item.createdByName}`),
+        note: String(item.note).trim(),
+        reasonCode: String(item.reasonCode || 'other'),
+        createdBy: item.createdBy ?? null,
+        createdByName: String(item.createdByName || 'Unknown'),
+        createdAt: String(item.createdAt || new Date().toISOString()),
+        ageDaysAtNote:
+          typeof item.ageDaysAtNote === 'number' ? item.ageDaysAtNote : item.ageDaysAtNote ?? null,
+      };
+    })
+    .filter((n) => n.note.length > 0);
+}
+
 /** Document / evidence checklist templates by form type (guidance + recommended docs). */
 export interface ChecklistTemplateItem {
   key: string;

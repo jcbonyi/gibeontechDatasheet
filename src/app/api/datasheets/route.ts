@@ -82,6 +82,7 @@ export async function POST(req: NextRequest) {
           form_types: denorm.form_types,
           cancel_reason: null,
           query_reason: null,
+          delay_notes: [],
           reviewed_by: null,
           reviewed_at: null,
           search_text: denorm.search_text,
