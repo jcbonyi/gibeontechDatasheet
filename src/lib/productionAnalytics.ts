@@ -268,10 +268,17 @@ export function reportPeriodLabel(from: string, to: string): string {
   return `${from} → ${to}`;
 }
 
-export type ChartPeriod = 'today' | 'thisWeek' | 'lastWeek' | 'thisMonth' | 'lastMonth';
+export type ChartPeriod =
+  | 'today'
+  | 'yesterday'
+  | 'thisWeek'
+  | 'lastWeek'
+  | 'thisMonth'
+  | 'lastMonth';
 
 export const CHART_PERIODS: { key: ChartPeriod; label: string }[] = [
   { key: 'today', label: 'Today' },
+  { key: 'yesterday', label: 'Yesterday' },
   { key: 'thisWeek', label: 'This Week' },
   { key: 'lastWeek', label: 'Last Week' },
   { key: 'thisMonth', label: 'This Month' },
@@ -288,6 +295,13 @@ export function resolveChartPeriodRange(
 
   if (period === 'today') {
     return { fromDate: today, toDate: today };
+  }
+
+  if (period === 'yesterday') {
+    const y = new Date(asOf);
+    y.setDate(y.getDate() - 1);
+    const yesterday = isoDate(y);
+    return { fromDate: yesterday, toDate: yesterday };
   }
 
   if (period === 'thisWeek') {

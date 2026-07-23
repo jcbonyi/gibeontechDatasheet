@@ -137,7 +137,11 @@ export function ProductionDashboard() {
   const weekFrom = startOfWeek();
   const monthFrom = monthStart();
   const periodLabel = CHART_PERIODS.find((p) => p.key === chartPeriod)?.label || '';
-  const showDailyBars = chartPeriod === 'today' || chartPeriod === 'thisWeek' || chartPeriod === 'lastWeek';
+  const showDailyBars =
+    chartPeriod === 'today' ||
+    chartPeriod === 'yesterday' ||
+    chartPeriod === 'thisWeek' ||
+    chartPeriod === 'lastWeek';
 
   return (
     <div className="pb-8">
