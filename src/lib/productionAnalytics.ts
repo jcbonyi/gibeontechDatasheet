@@ -174,12 +174,28 @@ export function buildProductionSummary(
         }
       : undefined;
 
-  const topStaffName = byDoneBy[0]?.name || null;
+  // Rank "Top staff" by total production value (amount), not by number of jobs.
+  const staffTotals = new Map<
+    number | null,
+    { userId: number | null; name: string; jobs: number; amount: number }
+  >();
+  for (const r of active) {
+    const userId = r.done_by_user_id ?? null;
+    const name = r.done_by_name || 'Unassigned';
+    const cur = staffTotals.get(userId) || { userId, name, jobs: 0, amount: 0 };
+    cur.jobs += 1;
+    cur.amount += Number(r.amount) || 0;
+    // Prefer a concrete staff name when it exists.
+    if (cur.name === 'Unassigned' && name !== 'Unassigned') cur.name = name;
+    staffTotals.set(userId, cur);
+  }
+  const topStaff = [...staffTotals.values()].sort(
+    (a, b) => b.amount - a.amount || b.jobs - a.jobs,
+  )[0];
+
+  const topStaffName = topStaff?.name || null;
   const topStaffUserId =
-    topStaffName && topStaffName !== 'Unassigned'
-      ? active.find((r) => (r.done_by_name || 'Unassigned') === topStaffName)?.done_by_user_id ??
-        null
-      : null;
+    topStaffName && topStaffName !== 'Unassigned' ? topStaff?.userId ?? null : null;
   const topInsurerName = byInsurer[0]?.name || null;
   const topInsurerId =
     topInsurerName && topInsurerName !== 'Unknown'

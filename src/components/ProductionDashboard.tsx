@@ -392,7 +392,7 @@ export function ProductionDashboard() {
                   <SimpleHorizontalBars
                     items={chartSummary.byDoneBy.slice(0, 10).map((i) => ({
                       label: `${i.name} (${formatMoney(i.amount)})`,
-                      value: i.jobs,
+                      value: i.amount,
                     }))}
                   />
                 </div>
