@@ -1,9 +1,11 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 import { Download, Pencil, Plus, Search, Trash2, Upload } from 'lucide-react';
 import { formatMoney, PRODUCTION_STATUS_LABELS, type ProductionStatus } from '@/lib/productionConfig';
+import { formatDisplayDate } from '@/lib/productionExport';
 import { canDeleteProductionEntry, canManageProduction } from '@/lib/productionPermissions';
 import { useAuth } from '@/context/AuthContext';
 import { useProductionLookups } from '@/components/ProductionEntryForm';
@@ -48,8 +50,9 @@ function monthEnd(offset = 0): string {
   return d.toISOString().slice(0, 10);
 }
 
-export function ProductionRegister() {
+function ProductionRegisterInner() {
   const { user } = useAuth();
+  const searchParams = useSearchParams();
   const { insurers, users } = useProductionLookups();
   const [entries, setEntries] = useState<EntryRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -64,10 +67,25 @@ export function ProductionRegister() {
   const [q, setQ] = useState('');
   const [importing, setImporting] = useState(false);
   const [importMessage, setImportMessage] = useState('');
+  const [filtersReady, setFiltersReady] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const canDelete = canDeleteProductionEntry(user);
   const canImport = canManageProduction(user);
+
+  // Apply filters from dashboard (and other) deep links
+  useEffect(() => {
+    setFromDate(searchParams.get('fromDate') || '');
+    setToDate(searchParams.get('toDate') || '');
+    setInsurerId(searchParams.get('insurerId') || '');
+    setDoneBy(searchParams.get('doneBy') || '');
+    setSeenBy(searchParams.get('seenBy') || '');
+    setInstructedBy(searchParams.get('instructedBy') || '');
+    setRegNo(searchParams.get('regNo') || '');
+    setStatus(searchParams.get('status') || '');
+    setQ(searchParams.get('q') || '');
+    setFiltersReady(true);
+  }, [searchParams]);
 
   const queryString = useCallback(() => {
     const p = new URLSearchParams();
@@ -96,8 +114,9 @@ export function ProductionRegister() {
   }, [queryString]);
 
   useEffect(() => {
+    if (!filtersReady) return;
     load();
-  }, [load]);
+  }, [filtersReady, load]);
 
   const applyPreset = (preset: string) => {
     const today = dateOffset(0);
@@ -218,9 +237,6 @@ export function ProductionRegister() {
           </a>
           <a href={exportUrl('pdf')} className="btn-secondary">
             PDF
-          </a>
-          <a href={exportUrl('csv')} className="btn-secondary">
-            CSV
           </a>
           <Link href="/production/entries/new" className="btn-primary">
             <Plus className="h-4 w-4" />
@@ -346,7 +362,7 @@ export function ProductionRegister() {
                 <tbody>
                   {entries.map((e) => (
                     <tr key={e.id}>
-                      <td>{e.production_date}</td>
+                      <td>{formatDisplayDate(e.production_date)}</td>
                       <td className="font-semibold text-brand-800">{e.registration_number}</td>
                       <td>{e.assignment || '—'}</td>
                       <td>{e.insurer_name || '—'}</td>
@@ -384,5 +400,13 @@ export function ProductionRegister() {
         )}
       </div>
     </div>
+  );
+}
+
+export function ProductionRegister() {
+  return (
+    <Suspense fallback={<div className="section-card text-sm text-slate-500">Loading register…</div>}>
+      <ProductionRegisterInner />
+    </Suspense>
   );
 }

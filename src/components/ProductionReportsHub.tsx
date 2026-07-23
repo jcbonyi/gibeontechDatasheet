@@ -48,9 +48,6 @@ export function ProductionReportsHub() {
           <a href={exportHref('pdf')} className="btn-secondary">
             PDF
           </a>
-          <a href={exportHref('csv')} className="btn-secondary">
-            CSV
-          </a>
           <Link href="/production" className="btn-secondary">
             Dashboard
           </Link>

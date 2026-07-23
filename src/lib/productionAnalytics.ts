@@ -69,7 +69,9 @@ export interface ProductionSummary {
     avgJobsPerDay: number | null;
     avgPerUser: number | null;
     topStaff: string | null;
+    topStaffUserId: number | null;
     topInsurer: string | null;
+    topInsurerId: number | null;
   };
   dailyTrend: { date: string; jobs: number; amount: number }[];
   weeklyTrend: { week: string; jobs: number; amount: number }[];
@@ -172,6 +174,18 @@ export function buildProductionSummary(
         }
       : undefined;
 
+  const topStaffName = byDoneBy[0]?.name || null;
+  const topStaffUserId =
+    topStaffName && topStaffName !== 'Unassigned'
+      ? active.find((r) => (r.done_by_name || 'Unassigned') === topStaffName)?.done_by_user_id ??
+        null
+      : null;
+  const topInsurerName = byInsurer[0]?.name || null;
+  const topInsurerId =
+    topInsurerName && topInsurerName !== 'Unknown'
+      ? active.find((r) => (r.insurer_name || 'Unknown') === topInsurerName)?.insurer_id ?? null
+      : null;
+
   return {
     kpis: {
       todayJobs: todayRows.length,
@@ -190,20 +204,19 @@ export function buildProductionSummary(
       avgPerJob: avg(amounts),
       avgJobsPerDay: uniqueDays ? Math.round((active.length / uniqueDays) * 10) / 10 : null,
       avgPerUser: uniqueStaff ? Math.round((sum(amounts) / uniqueStaff) * 100) / 100 : null,
-      topStaff: byDoneBy[0]?.name || null,
-      topInsurer: byInsurer[0]?.name || null,
+      topStaff: topStaffName,
+      topStaffUserId,
+      topInsurer: topInsurerName,
+      topInsurerId,
     },
     dailyTrend: [...dayMap.entries()]
       .sort(([a], [b]) => a.localeCompare(b))
-      .slice(-30)
       .map(([date, v]) => ({ date, jobs: v.jobs, amount: Math.round(v.amount * 100) / 100 })),
     weeklyTrend: [...weekMap.entries()]
       .sort(([a], [b]) => a.localeCompare(b))
-      .slice(-12)
       .map(([week, v]) => ({ week, jobs: v.jobs, amount: Math.round(v.amount * 100) / 100 })),
     monthlyTrend: [...monthMap.entries()]
       .sort(([a], [b]) => a.localeCompare(b))
-      .slice(-12)
       .map(([month, v]) => ({ month, jobs: v.jobs, amount: Math.round(v.amount * 100) / 100 })),
     byInsurer,
     byDoneBy,
@@ -237,6 +250,51 @@ export function buildProductionSummary(
 
 export function reportPeriodLabel(from: string, to: string): string {
   return `${from} → ${to}`;
+}
+
+export type ChartPeriod = 'today' | 'thisWeek' | 'lastWeek' | 'thisMonth' | 'lastMonth';
+
+export const CHART_PERIODS: { key: ChartPeriod; label: string }[] = [
+  { key: 'today', label: 'Today' },
+  { key: 'thisWeek', label: 'This Week' },
+  { key: 'lastWeek', label: 'Last Week' },
+  { key: 'thisMonth', label: 'This Month' },
+  { key: 'lastMonth', label: 'Last Month' },
+];
+
+/** Inclusive from/to dates (YYYY-MM-DD) for dashboard chart periods. */
+export function resolveChartPeriodRange(
+  period: ChartPeriod,
+  asOf = new Date(),
+): { fromDate: string; toDate: string } {
+  const today = isoDate(asOf);
+  const weekStart = startOfWeek(asOf);
+
+  if (period === 'today') {
+    return { fromDate: today, toDate: today };
+  }
+
+  if (period === 'thisWeek') {
+    return { fromDate: isoDate(weekStart), toDate: today };
+  }
+
+  if (period === 'lastWeek') {
+    const end = new Date(weekStart);
+    end.setDate(end.getDate() - 1);
+    const start = new Date(end);
+    start.setDate(start.getDate() - 6);
+    return { fromDate: isoDate(start), toDate: isoDate(end) };
+  }
+
+  if (period === 'thisMonth') {
+    const start = new Date(asOf.getFullYear(), asOf.getMonth(), 1);
+    return { fromDate: isoDate(start), toDate: today };
+  }
+
+  // lastMonth
+  const start = new Date(asOf.getFullYear(), asOf.getMonth() - 1, 1);
+  const end = new Date(asOf.getFullYear(), asOf.getMonth(), 0);
+  return { fromDate: isoDate(start), toDate: isoDate(end) };
 }
 
 export { formatMoney, isoDate, startOfWeek };
