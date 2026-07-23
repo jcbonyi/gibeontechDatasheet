@@ -1,14 +1,16 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
   ASSIGNMENT_TYPES,
+  formatMoney,
   PAID_STATUSES,
   PAID_STATUS_LABELS,
   PRODUCTION_STATUS_LABELS,
   PRODUCTION_STATUSES,
+  vatAmount,
   type AssignmentType,
   type PaidStatus,
   type ProductionStatus,
@@ -116,6 +118,13 @@ export function ProductionEntryForm({
       if (match) setSeenBy(match.name);
     }
   }, [users, initial?.seen_by_user_id, seenBy]);
+
+  const vatDisplay = useMemo(() => {
+    const gross = Number(amount);
+    const net = amountWithoutVat === '' ? 0 : Number(amountWithoutVat);
+    if (!Number.isFinite(gross) || !Number.isFinite(net)) return 0;
+    return vatAmount(gross, net);
+  }, [amount, amountWithoutVat]);
 
   const payload = () => ({
     production_date: productionDate,
@@ -256,6 +265,11 @@ export function ProductionEntryForm({
             value={amountWithoutVat}
             onChange={(e) => setAmountWithoutVat(e.target.value)}
           />
+        </div>
+        <div>
+          <label className="form-label">VAT Amount</label>
+          <input className="form-input bg-slate-50" value={formatMoney(vatDisplay)} readOnly />
+          <p className="mt-1 text-xs text-slate-500">Amount − Amount without VAT</p>
         </div>
         <div>
           <label className="form-label">Status</label>

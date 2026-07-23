@@ -95,6 +95,14 @@ export function amountWithoutVat(amount: number, vatRate = VAT_RATE): number {
   return Math.round(net * 100) / 100;
 }
 
+/** VAT portion = Amount − Amount without VAT (never negative). */
+export function vatAmount(amount: number, amountWithoutVatValue: number): number {
+  const gross = Number.isFinite(amount) ? amount : 0;
+  const net = Number.isFinite(amountWithoutVatValue) ? amountWithoutVatValue : 0;
+  const vat = Math.round((gross - net) * 100) / 100;
+  return vat < 0 ? 0 : vat;
+}
+
 export function formatMoney(value: number): string {
   return value.toLocaleString('en-KE', {
     minimumFractionDigits: 2,

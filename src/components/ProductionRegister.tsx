@@ -4,7 +4,7 @@ import { Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { Download, Pencil, Plus, Search, Trash2, Upload } from 'lucide-react';
-import { formatMoney, PRODUCTION_STATUS_LABELS, formatDisplayDate, PAID_STATUS_LABELS, type ProductionStatus, type PaidStatus } from '@/lib/productionConfig';
+import { formatMoney, PRODUCTION_STATUS_LABELS, formatDisplayDate, PAID_STATUS_LABELS, vatAmount, type ProductionStatus, type PaidStatus } from '@/lib/productionConfig';
 import { canDeleteProductionEntry, canManageProduction } from '@/lib/productionPermissions';
 import { useAuth } from '@/context/AuthContext';
 import { useProductionLookups } from '@/components/ProductionEntryForm';
@@ -371,6 +371,7 @@ function ProductionRegisterInner() {
                     <th>Insurer</th>
                     <th>Amount</th>
                     <th>Without VAT</th>
+                    <th>VAT Amount</th>
                     <th>Fee Note No.</th>
                     <th>Insured</th>
                     <th>Claim/Policy</th>
@@ -391,6 +392,7 @@ function ProductionRegisterInner() {
                       <td>{e.insurer_name || '—'}</td>
                       <td>{formatMoney(e.amount)}</td>
                       <td>{formatMoney(e.amount_without_vat)}</td>
+                      <td>{formatMoney(vatAmount(e.amount, e.amount_without_vat))}</td>
                       <td>{e.fee_note_no || '—'}</td>
                       <td>{e.insured || '—'}</td>
                       <td>{e.claim_policy_number || '—'}</td>

@@ -6,7 +6,7 @@ import autoTable from 'jspdf-autotable';
 import { BRAND_COLORS, COMPANY } from '@/constants/brand';
 import type { DbProductionEntry } from '@/lib/productionDb';
 import type { ProductionSummary } from '@/lib/productionAnalytics';
-import { formatDisplayDate, formatMoney } from '@/lib/productionConfig';
+import { formatDisplayDate, formatMoney, vatAmount } from '@/lib/productionConfig';
 
 function hexToRgb(hex: string): { r: number; g: number; b: number } {
   const h = hex.replace('#', '');
@@ -168,6 +168,7 @@ export async function buildProductionExcel(
         'Insurer',
         'Amount',
         'Without VAT',
+        'VAT Amount',
         'Done By',
         'Seen By',
         'Instructed By',
@@ -185,6 +186,7 @@ export async function buildProductionExcel(
         'Insurer',
         'Amount',
         'Without VAT',
+        'VAT Amount',
         'Done By',
         'Seen By',
         'Instructed By',
@@ -198,6 +200,7 @@ export async function buildProductionExcel(
   styleHeaderRow(headerRow);
 
   entries.forEach((e, idx) => {
+    const vat = vatAmount(Number(e.amount) || 0, Number(e.amount_without_vat) || 0);
     const base = [
       formatDisplayDate(e.production_date),
       e.registration_number,
@@ -205,6 +208,7 @@ export async function buildProductionExcel(
       e.insurer_name || '',
       Number(e.amount) || 0,
       Number(e.amount_without_vat) || 0,
+      vat,
       e.done_by_name || '',
       e.seen_by_name || '',
       e.instructed_by_name || '',
@@ -225,17 +229,19 @@ export async function buildProductionExcel(
     applyDataRowStyle(row, idx);
     row.getCell(5).numFmt = '#,##0.00';
     row.getCell(6).numFmt = '#,##0.00';
+    row.getCell(7).numFmt = '#,##0.00';
   });
 
   const widths = isStatement
-    ? [14, 14, 18, 22, 12, 12, 16, 16, 18, 14, 20, 18, 10, 12, 28]
-    : [14, 14, 18, 22, 12, 12, 16, 16, 18, 12, 28];
+    ? [14, 14, 18, 22, 12, 12, 12, 16, 16, 18, 14, 20, 18, 10, 12, 28]
+    : [14, 14, 18, 22, 12, 12, 12, 16, 16, 18, 12, 28];
   widths.forEach((w, i) => {
     reg.getColumn(i + 1).width = w;
   });
 
   // Totals footer
   if (entries.length) {
+    const totalVat = vatAmount(summary.kpis.totalAmount, summary.kpis.totalWithoutVat);
     const totalCells = isStatement
       ? [
           '',
@@ -244,6 +250,7 @@ export async function buildProductionExcel(
           'TOTAL',
           summary.kpis.totalAmount,
           summary.kpis.totalWithoutVat,
+          totalVat,
           '',
           '',
           '',
@@ -261,6 +268,7 @@ export async function buildProductionExcel(
           'TOTAL',
           summary.kpis.totalAmount,
           summary.kpis.totalWithoutVat,
+          totalVat,
           '',
           '',
           '',
@@ -278,6 +286,7 @@ export async function buildProductionExcel(
     });
     totalRow.getCell(5).numFmt = '#,##0.00';
     totalRow.getCell(6).numFmt = '#,##0.00';
+    totalRow.getCell(7).numFmt = '#,##0.00';
   }
 
   // —— KPIs ——
@@ -417,9 +426,13 @@ export function buildProductionPdf(
     { label: 'Jobs', value: String(summary.kpis.totalJobs) },
     { label: 'Amount', value: formatMoney(summary.kpis.totalAmount) },
     { label: 'Without VAT', value: formatMoney(summary.kpis.totalWithoutVat) },
+    {
+      label: 'VAT Amount',
+      value: formatMoney(vatAmount(summary.kpis.totalAmount, summary.kpis.totalWithoutVat)),
+    },
     { label: 'Top staff', value: summary.kpis.topStaff || '—' },
   ];
-  const chipW = (pageW - margin * 2 - 6) / chips.length;
+  const chipW = (pageW - margin * 2 - 8) / chips.length;
   chips.forEach((chip, i) => {
     const x = margin + i * (chipW + 2);
     pdf.setFillColor(245, 245, 250);
@@ -445,6 +458,7 @@ export function buildProductionPdf(
         'Insurer',
         'Amount',
         'Without VAT',
+        'VAT Amount',
         'Done By',
         'Seen By',
         'Instructed By',
@@ -458,6 +472,7 @@ export function buildProductionPdf(
       e.insurer_name || '—',
       formatMoney(e.amount),
       formatMoney(e.amount_without_vat),
+      formatMoney(vatAmount(Number(e.amount) || 0, Number(e.amount_without_vat) || 0)),
       e.done_by_name || '—',
       e.seen_by_name || '—',
       e.instructed_by_name || '—',
@@ -482,9 +497,10 @@ export function buildProductionPdf(
       fillColor: [245, 245, 250],
     },
     columnStyles: {
-      0: { cellWidth: 22 },
+      0: { cellWidth: 20 },
       4: { halign: 'right' },
       5: { halign: 'right' },
+      6: { halign: 'right' },
     },
     margin: { left: margin, right: margin },
     didDrawPage: (data) => {
