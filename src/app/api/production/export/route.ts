@@ -21,6 +21,7 @@ export async function GET(req: NextRequest) {
     const fromDate = searchParams.get('fromDate') || undefined;
     const toDate = searchParams.get('toDate') || undefined;
     const pack = searchParams.get('pack') || 'register';
+    const isStatement = pack === 'statement';
 
     const entries = await listProductionEntries({
       fromDate,
@@ -32,12 +33,18 @@ export async function GET(req: NextRequest) {
         ? Number(searchParams.get('doneBy'))
         : undefined,
       status: searchParams.get('status') || undefined,
+      paidStatus: searchParams.get('paid') || undefined,
       q: searchParams.get('q') || undefined,
+      registrationNumber: searchParams.get('regNo') || undefined,
+      instructedBy: searchParams.get('instructedBy') || undefined,
+      seenByUserId: searchParams.get('seenBy')
+        ? Number(searchParams.get('seenBy'))
+        : undefined,
     });
     const summary = buildProductionSummary(entries);
     const stamp = formatDisplayDate(new Date().toISOString()).replace(/-/g, '');
 
-    const opts = { pack, fromDate, toDate };
+    const opts = { pack, fromDate, toDate, statement: isStatement };
 
     if (format === 'csv') {
       return NextResponse.json(
@@ -47,6 +54,12 @@ export async function GET(req: NextRequest) {
     }
 
     if (format === 'pdf') {
+      if (isStatement) {
+        return NextResponse.json(
+          { message: 'Statement is Excel only. Use the Statement button for Excel export.' },
+          { status: 400 },
+        );
+      }
       const buf = buildProductionPdf(entries, summary, opts);
       return new NextResponse(new Uint8Array(buf), {
         headers: {
@@ -57,11 +70,14 @@ export async function GET(req: NextRequest) {
     }
 
     const buffer = await buildProductionExcel(entries, summary, opts);
+    const filename = isStatement
+      ? `GibeonTech-Production-Statement-${stamp}.xlsx`
+      : `GibeonTech-Production-${pack}-${stamp}.xlsx`;
     return new NextResponse(new Uint8Array(buffer), {
       headers: {
         'Content-Type':
           'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-        'Content-Disposition': `attachment; filename="GibeonTech-Production-${pack}-${stamp}.xlsx"`,
+        'Content-Disposition': `attachment; filename="${filename}"`,
       },
     });
   } catch (err) {

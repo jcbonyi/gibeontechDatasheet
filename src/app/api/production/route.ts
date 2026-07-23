@@ -12,7 +12,7 @@ import {
   listTargets,
   resolveProductionPeople,
 } from '@/lib/productionDb';
-import { PRODUCTION_STATUSES, normalizeAssignment, type ProductionStatus } from '@/lib/productionConfig';
+import { PRODUCTION_STATUSES, normalizeAssignment, normalizePaidStatus, type ProductionStatus } from '@/lib/productionConfig';
 import { buildProductionSummary } from '@/lib/productionAnalytics';
 
 
@@ -33,6 +33,7 @@ function parseFilters(req: NextRequest) {
     instructedBy: searchParams.get('instructedBy') || undefined,
     registrationNumber: searchParams.get('regNo') || undefined,
     status: searchParams.get('status') || undefined,
+    paidStatus: searchParams.get('paid') || undefined,
     q: searchParams.get('q') || undefined,
   };
 }
@@ -66,6 +67,7 @@ export async function POST(req: NextRequest) {
     const amount = Number(body.amount);
     const amount_without_vat = Number(body.amount_without_vat ?? 0);
     const status = String(body.status || 'completed') as ProductionStatus;
+    const paid_status = normalizePaidStatus(body.paid_status);
 
     if (!production_date || !registration_number) {
       return badRequest('Date and registration number are required');
@@ -97,6 +99,10 @@ export async function POST(req: NextRequest) {
         seen_by_user_id: people.seen_by_user_id,
         instructed_by: people.instructed_by,
         instructed_by_user_id: null,
+        fee_note_no: body.fee_note_no,
+        insured: body.insured,
+        claim_policy_number: body.claim_policy_number,
+        paid_status,
         remarks: body.remarks,
         status,
       },

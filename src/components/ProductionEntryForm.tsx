@@ -5,9 +5,12 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
   ASSIGNMENT_TYPES,
+  PAID_STATUSES,
+  PAID_STATUS_LABELS,
   PRODUCTION_STATUS_LABELS,
   PRODUCTION_STATUSES,
   type AssignmentType,
+  type PaidStatus,
   type ProductionStatus,
 } from '@/lib/productionConfig';
 
@@ -32,6 +35,10 @@ interface EntryFormProps {
     seen_by_name: string | null;
     instructed_by: string | null;
     instructed_by_name: string | null;
+    fee_note_no: string | null;
+    insured: string | null;
+    claim_policy_number: string | null;
+    paid_status: PaidStatus;
     remarks: string;
     status: ProductionStatus;
   }>;
@@ -62,6 +69,14 @@ export function ProductionEntryForm({
   const [amount, setAmount] = useState(String(initial?.amount ?? ''));
   const [amountWithoutVat, setAmountWithoutVat] = useState(
     String(initial?.amount_without_vat ?? ''),
+  );
+  const [feeNoteNo, setFeeNoteNo] = useState(initial?.fee_note_no || '');
+  const [insured, setInsured] = useState(initial?.insured || '');
+  const [claimPolicyNumber, setClaimPolicyNumber] = useState(
+    initial?.claim_policy_number || '',
+  );
+  const [paidStatus, setPaidStatus] = useState<PaidStatus>(
+    initial?.paid_status === 'paid' ? 'paid' : 'unpaid',
   );
   const [doneBy, setDoneBy] = useState(
     initial?.done_by_name ||
@@ -112,6 +127,10 @@ export function ProductionEntryForm({
     done_by_name: doneBy.trim() || null,
     seen_by_name: seenBy.trim() || null,
     instructed_by: instructedBy.trim() || null,
+    fee_note_no: feeNoteNo.trim() || null,
+    insured: insured.trim() || null,
+    claim_policy_number: claimPolicyNumber.trim() || null,
+    paid_status: paidStatus,
     remarks,
     status,
   });
@@ -135,6 +154,10 @@ export function ProductionEntryForm({
         setAssignment('');
         setAmount('');
         setAmountWithoutVat('');
+        setFeeNoteNo('');
+        setInsured('');
+        setClaimPolicyNumber('');
+        setPaidStatus('unpaid');
         setRemarks('');
         setProductionDate(new Date().toISOString().slice(0, 10));
         onSaved?.(data.entry.id);
@@ -277,6 +300,47 @@ export function ProductionEntryForm({
               <option key={u.id} value={u.name} />
             ))}
           </datalist>
+        </div>
+        <div>
+          <label className="form-label">Fee Note No.</label>
+          <input
+            className="form-input"
+            value={feeNoteNo}
+            onChange={(e) => setFeeNoteNo(e.target.value)}
+            placeholder="Fee note number"
+          />
+        </div>
+        <div>
+          <label className="form-label">Insured</label>
+          <input
+            className="form-input"
+            value={insured}
+            onChange={(e) => setInsured(e.target.value)}
+            placeholder="Insured name"
+          />
+        </div>
+        <div>
+          <label className="form-label">Claim / Policy Number</label>
+          <input
+            className="form-input"
+            value={claimPolicyNumber}
+            onChange={(e) => setClaimPolicyNumber(e.target.value)}
+            placeholder="Claim or policy no."
+          />
+        </div>
+        <div>
+          <label className="form-label">Paid</label>
+          <select
+            className="form-input"
+            value={paidStatus}
+            onChange={(e) => setPaidStatus(e.target.value as PaidStatus)}
+          >
+            {PAID_STATUSES.map((s) => (
+              <option key={s} value={s}>
+                {PAID_STATUS_LABELS[s]}
+              </option>
+            ))}
+          </select>
         </div>
         <div>
           <label className="form-label">Instructed By</label>

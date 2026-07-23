@@ -129,12 +129,13 @@ function addBrandedTitleBlock(
 export async function buildProductionExcel(
   entries: DbProductionEntry[],
   summary: ProductionSummary,
-  opts: { pack: string; fromDate?: string; toDate?: string },
+  opts: { pack: string; fromDate?: string; toDate?: string; statement?: boolean },
 ): Promise<Buffer> {
   const wb = new ExcelJS.Workbook();
   wb.creator = COMPANY.shortName;
   wb.company = COMPANY.name;
   wb.created = new Date();
+  const isStatement = Boolean(opts.statement || opts.pack === 'statement');
 
   const logoBuf = loadLogoBuffer();
   const logoId =
@@ -148,25 +149,48 @@ export async function buildProductionExcel(
   const subtitle = `Period: ${periodLabel(opts.fromDate, opts.toDate)} · Generated ${formatDisplayDate(new Date().toISOString())} · ${entries.length} jobs`;
 
   // —— Register ——
-  const reg = wb.addWorksheet('Register', {
+  const reg = wb.addWorksheet(isStatement ? 'Statement' : 'Register', {
     properties: { tabColor: { argb: PURPLE_ARGB } },
     views: [{ state: 'frozen', ySplit: 5 }],
   });
-  addBrandedTitleBlock(reg, 'Production Register', subtitle, logoId);
+  addBrandedTitleBlock(
+    reg,
+    isStatement ? 'Production Statement' : 'Production Register',
+    subtitle,
+    logoId,
+  );
 
-  const headers = [
-    'Date',
-    'Reg No',
-    'Assignment',
-    'Insurer',
-    'Amount',
-    'Without VAT',
-    'Done By',
-    'Seen By',
-    'Instructed By',
-    'Status',
-    'Remarks',
-  ];
+  const headers = isStatement
+    ? [
+        'Date',
+        'Reg No',
+        'Assignment',
+        'Insurer',
+        'Amount',
+        'Without VAT',
+        'Done By',
+        'Seen By',
+        'Instructed By',
+        'Fee Note No.',
+        'Insured',
+        'Claim/Policy Number',
+        'Paid',
+        'Status',
+        'Remarks',
+      ]
+    : [
+        'Date',
+        'Reg No',
+        'Assignment',
+        'Insurer',
+        'Amount',
+        'Without VAT',
+        'Done By',
+        'Seen By',
+        'Instructed By',
+        'Status',
+        'Remarks',
+      ];
   const headerRow = reg.getRow(5);
   headers.forEach((h, i) => {
     headerRow.getCell(i + 1).value = h;
@@ -174,7 +198,7 @@ export async function buildProductionExcel(
   styleHeaderRow(headerRow);
 
   entries.forEach((e, idx) => {
-    const row = reg.addRow([
+    const base = [
       formatDisplayDate(e.production_date),
       e.registration_number,
       e.assignment || '',
@@ -184,34 +208,66 @@ export async function buildProductionExcel(
       e.done_by_name || '',
       e.seen_by_name || '',
       e.instructed_by_name || '',
-      e.status,
-      e.remarks || '',
-    ]);
+    ];
+    const row = reg.addRow(
+      isStatement
+        ? [
+            ...base,
+            e.fee_note_no || '',
+            e.insured || '',
+            e.claim_policy_number || '',
+            e.paid_status === 'paid' ? 'Paid' : 'Unpaid',
+            e.status,
+            e.remarks || '',
+          ]
+        : [...base, e.status, e.remarks || ''],
+    );
     applyDataRowStyle(row, idx);
     row.getCell(5).numFmt = '#,##0.00';
     row.getCell(6).numFmt = '#,##0.00';
   });
 
-  const widths = [14, 14, 18, 22, 12, 12, 16, 16, 18, 12, 28];
+  const widths = isStatement
+    ? [14, 14, 18, 22, 12, 12, 16, 16, 18, 14, 20, 18, 10, 12, 28]
+    : [14, 14, 18, 22, 12, 12, 16, 16, 18, 12, 28];
   widths.forEach((w, i) => {
     reg.getColumn(i + 1).width = w;
   });
 
   // Totals footer
   if (entries.length) {
-    const totalRow = reg.addRow([
-      '',
-      '',
-      '',
-      'TOTAL',
-      summary.kpis.totalAmount,
-      summary.kpis.totalWithoutVat,
-      '',
-      '',
-      '',
-      `${summary.kpis.totalJobs} jobs`,
-      '',
-    ]);
+    const totalCells = isStatement
+      ? [
+          '',
+          '',
+          '',
+          'TOTAL',
+          summary.kpis.totalAmount,
+          summary.kpis.totalWithoutVat,
+          '',
+          '',
+          '',
+          '',
+          '',
+          '',
+          '',
+          `${summary.kpis.totalJobs} jobs`,
+          '',
+        ]
+      : [
+          '',
+          '',
+          '',
+          'TOTAL',
+          summary.kpis.totalAmount,
+          summary.kpis.totalWithoutVat,
+          '',
+          '',
+          '',
+          `${summary.kpis.totalJobs} jobs`,
+          '',
+        ];
+    const totalRow = reg.addRow(totalCells);
     totalRow.eachCell((cell) => {
       cell.font = { bold: true, name: 'Calibri', size: 10, color: { argb: PURPLE_ARGB } };
       cell.fill = {

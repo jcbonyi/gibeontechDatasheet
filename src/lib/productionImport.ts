@@ -1,5 +1,5 @@
 import ExcelJS from 'exceljs';
-import { normalizeAssignment } from '@/lib/productionConfig';
+import { normalizeAssignment, normalizePaidStatus, type PaidStatus } from '@/lib/productionConfig';
 import type { ProductionEntryInput } from '@/lib/productionDb';
 
 export interface ParsedProductionRow {
@@ -14,6 +14,10 @@ export interface ParsedProductionRow {
   done_by_name: string | null;
   seen_by_name: string | null;
   instructed_by_name: string | null;
+  fee_note_no: string | null;
+  insured: string | null;
+  claim_policy_number: string | null;
+  paid_status: PaidStatus;
 }
 
 export interface ProductionImportParseResult {
@@ -49,6 +53,21 @@ const HEADER_ALIASES: Record<string, keyof Omit<ParsedProductionRow, 'rowNumber'
   'instructed by': 'instructed_by_name',
   instructedby: 'instructed_by_name',
   instructed_by: 'instructed_by_name',
+  'fee note no': 'fee_note_no',
+  'fee note no.': 'fee_note_no',
+  'fee note': 'fee_note_no',
+  feenoteno: 'fee_note_no',
+  fee_note_no: 'fee_note_no',
+  insured: 'insured',
+  'claim policy number': 'claim_policy_number',
+  'claim/policy number': 'claim_policy_number',
+  'claim / policy number': 'claim_policy_number',
+  'claim number': 'claim_policy_number',
+  'policy number': 'claim_policy_number',
+  claim_policy_number: 'claim_policy_number',
+  paid: 'paid_status',
+  'paid status': 'paid_status',
+  paid_status: 'paid_status',
 };
 
 const MONTH_NAMES: Record<string, number> = {
@@ -269,6 +288,8 @@ function parseSheet(
         raw.registration_number = cellText(value).toUpperCase();
       } else if (field === 'insurer_name') {
         raw.insurer_name = cellText(value);
+      } else if (field === 'paid_status') {
+        raw.paid_status = normalizePaidStatus(cellText(value));
       } else {
         const name = cellText(value);
         raw[field] = name || null;
@@ -321,6 +342,10 @@ function parseSheet(
       done_by_name: raw.done_by_name ?? null,
       seen_by_name: raw.seen_by_name ?? null,
       instructed_by_name: raw.instructed_by_name ?? null,
+      fee_note_no: raw.fee_note_no ?? null,
+      insured: raw.insured ?? null,
+      claim_policy_number: raw.claim_policy_number ?? null,
+      paid_status: normalizePaidStatus(raw.paid_status),
     });
   });
 
@@ -403,6 +428,10 @@ export function buildImportTemplateBuffer(): Promise<Buffer> {
     'DONE BY',
     'SEEN BY',
     'INSTRUCTED BY',
+    'FEE NOTE NO',
+    'INSURED',
+    'CLAIM/POLICY NUMBER',
+    'PAID',
   ]);
   ws.getRow(1).font = { bold: true };
   ws.addRow([
@@ -415,6 +444,10 @@ export function buildImportTemplateBuffer(): Promise<Buffer> {
     'Jane Assessor',
     'John Manager',
     'Insurer Desk',
+    'FN-001',
+    'John Doe',
+    'CLM/2026/001',
+    'Unpaid',
   ]);
   ws.columns.forEach((c) => {
     c.width = 16;
@@ -461,6 +494,10 @@ export function toEntryInput(
     seen_by_user_id: seenBy,
     instructed_by: row.instructed_by_name?.trim() || null,
     instructed_by_user_id: null,
+    fee_note_no: row.fee_note_no,
+    insured: row.insured,
+    claim_policy_number: row.claim_policy_number,
+    paid_status: row.paid_status,
     remarks: null,
     status: 'completed',
   };

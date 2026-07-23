@@ -351,6 +351,14 @@ async function initPostgres(): Promise<void> {
   await pool.query(`CREATE INDEX IF NOT EXISTS idx_production_reg ON production_entries (registration_number)`);
   await pool.query(`ALTER TABLE production_entries ADD COLUMN IF NOT EXISTS assignment TEXT`);
   await pool.query(`ALTER TABLE production_entries ADD COLUMN IF NOT EXISTS instructed_by TEXT`);
+  await pool.query(`ALTER TABLE production_entries ADD COLUMN IF NOT EXISTS fee_note_no TEXT`);
+  await pool.query(`ALTER TABLE production_entries ADD COLUMN IF NOT EXISTS insured TEXT`);
+  await pool.query(
+    `ALTER TABLE production_entries ADD COLUMN IF NOT EXISTS claim_policy_number TEXT`,
+  );
+  await pool.query(
+    `ALTER TABLE production_entries ADD COLUMN IF NOT EXISTS paid_status TEXT DEFAULT 'unpaid'`,
+  );
   await pool.query(`
     CREATE TABLE IF NOT EXISTS production_targets (
       id SERIAL PRIMARY KEY,

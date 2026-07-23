@@ -56,8 +56,37 @@ export function normalizeAssignment(value: unknown): string | null {
   return raw;
 }
 
-export function isAssignmentType(value: string): value is AssignmentType {
-  return (ASSIGNMENT_TYPES as readonly string[]).includes(value);
+export const PAID_STATUSES = ['paid', 'unpaid'] as const;
+export type PaidStatus = (typeof PAID_STATUSES)[number];
+
+export const PAID_STATUS_LABELS: Record<PaidStatus, string> = {
+  paid: 'Paid',
+  unpaid: 'Unpaid',
+};
+
+/** Normalize Paid / Unpaid from form or Excel. Defaults to unpaid when empty. */
+export function normalizePaidStatus(value: unknown, fallback: PaidStatus = 'unpaid'): PaidStatus {
+  if (value == null) return fallback;
+  const raw = String(value).replace(/\u00a0/g, ' ').trim().toLowerCase();
+  if (!raw) return fallback;
+  if (raw === 'paid' || raw === 'yes' || raw === 'y' || raw === 'true' || raw === '1') {
+    return 'paid';
+  }
+  if (
+    raw === 'unpaid' ||
+    raw === 'not paid' ||
+    raw === 'no' ||
+    raw === 'n' ||
+    raw === 'false' ||
+    raw === '0'
+  ) {
+    return 'unpaid';
+  }
+  return fallback;
+}
+
+export function isPaidStatus(value: string): value is PaidStatus {
+  return (PAID_STATUSES as readonly string[]).includes(value);
 }
 
 export function amountWithoutVat(amount: number, vatRate = VAT_RATE): number {

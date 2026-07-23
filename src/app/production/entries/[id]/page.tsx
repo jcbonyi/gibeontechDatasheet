@@ -48,6 +48,11 @@ export default function EditProductionEntryPage() {
                 assignment: initial.assignment != null ? String(initial.assignment) : '',
                 amount: Number(initial.amount),
                 amount_without_vat: Number(initial.amount_without_vat ?? 0),
+                fee_note_no: (initial.fee_note_no as string | null) ?? null,
+                insured: (initial.insured as string | null) ?? null,
+                claim_policy_number: (initial.claim_policy_number as string | null) ?? null,
+                paid_status:
+                  initial.paid_status === 'paid' ? 'paid' : 'unpaid',
                 done_by_user_id: (initial.done_by_user_id as number | null) ?? null,
                 done_by_name: (initial.done_by_name as string | null) ?? null,
                 seen_by_user_id: (initial.seen_by_user_id as number | null) ?? null,

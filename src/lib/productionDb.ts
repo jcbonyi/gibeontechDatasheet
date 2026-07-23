@@ -4,7 +4,7 @@ import path from 'path';
 import { hashPassword } from '@/lib/auth';
 import { createUserRecord, ensureDb, isJsonMode, isSupabaseMode, query } from '@/lib/db';
 import { getSupabaseAdmin } from '@/lib/supabase';
-import { normalizeAssignment, VAT_RATE, type ProductionStatus } from '@/lib/productionConfig';
+import { normalizeAssignment, normalizePaidStatus, VAT_RATE, type PaidStatus, type ProductionStatus } from '@/lib/productionConfig';
 
 export interface DbInsurer {
   id: number;
@@ -29,6 +29,10 @@ export interface DbProductionEntry {
   instructed_by_user_id: number | null;
   /** Free-text Instructed By (preferred over instructed_by_user_id). */
   instructed_by: string | null;
+  fee_note_no: string | null;
+  insured: string | null;
+  claim_policy_number: string | null;
+  paid_status: PaidStatus;
   remarks: string | null;
   status: ProductionStatus;
   created_by: number | null;
@@ -51,6 +55,7 @@ export interface ProductionListFilters {
   instructedBy?: string;
   registrationNumber?: string;
   status?: string;
+  paidStatus?: string;
   q?: string;
   createdByUserId?: number;
 }
@@ -171,6 +176,10 @@ function enrichEntry(
     assignment: row.assignment ?? null,
     amount: num(row.amount),
     amount_without_vat: num(row.amount_without_vat),
+    fee_note_no: row.fee_note_no?.trim() || null,
+    insured: row.insured?.trim() || null,
+    claim_policy_number: row.claim_policy_number?.trim() || null,
+    paid_status: normalizePaidStatus(row.paid_status),
     insurer_name: insurers.get(row.insurer_id) || row.insurer_name || null,
     done_by_name: row.done_by_user_id ? users.get(row.done_by_user_id) || null : null,
     seen_by_name: row.seen_by_user_id ? users.get(row.seen_by_user_id) || null : null,
@@ -575,6 +584,9 @@ function matchesFilters(row: DbProductionEntry, filters: ProductionListFilters):
     if (!hay.includes(needle)) return false;
   }
   if (filters.status && row.status !== filters.status) return false;
+  if (filters.paidStatus && normalizePaidStatus(row.paid_status) !== filters.paidStatus) {
+    return false;
+  }
   if (filters.createdByUserId && row.created_by !== filters.createdByUserId) return false;
   if (filters.registrationNumber) {
     const q = filters.registrationNumber.toLowerCase();
@@ -591,6 +603,10 @@ function matchesFilters(row: DbProductionEntry, filters: ProductionListFilters):
       row.done_by_name || '',
       row.seen_by_name || '',
       row.instructed_by_name || '',
+      row.fee_note_no || '',
+      row.insured || '',
+      row.claim_policy_number || '',
+      row.paid_status || '',
     ]
       .join(' ')
       .toLowerCase();
@@ -672,6 +688,10 @@ export type ProductionEntryInput = {
   seen_by_user_id?: number | null;
   instructed_by?: string | null;
   instructed_by_user_id?: number | null;
+  fee_note_no?: string | null;
+  insured?: string | null;
+  claim_policy_number?: string | null;
+  paid_status?: PaidStatus | string | null;
   remarks?: string | null;
   status?: ProductionStatus;
 };
@@ -688,6 +708,11 @@ function resolveAmountWithoutVat(input: ProductionEntryInput): number {
   return n < 0 ? 0 : Math.round(n * 100) / 100;
 }
 
+function textOrNull(value: string | null | undefined): string | null {
+  const t = String(value || '').trim();
+  return t || null;
+}
+
 export async function createProductionEntry(
   input: ProductionEntryInput,
   userId: number,
@@ -700,6 +725,10 @@ export async function createProductionEntry(
   const reg = input.registration_number.trim().toUpperCase();
   const assignment = normalizeAssignment(input.assignment);
   const instructed_by = instructedByText(input);
+  const fee_note_no = textOrNull(input.fee_note_no);
+  const insured = textOrNull(input.insured);
+  const claim_policy_number = textOrNull(input.claim_policy_number);
+  const paid_status = normalizePaidStatus(input.paid_status);
 
   if (isJsonMode()) {
     const s = getStore();
@@ -717,6 +746,10 @@ export async function createProductionEntry(
       seen_by_user_id: input.seen_by_user_id ?? null,
       instructed_by_user_id: input.instructed_by_user_id ?? null,
       instructed_by,
+      fee_note_no,
+      insured,
+      claim_policy_number,
+      paid_status,
       remarks: input.remarks?.trim() || null,
       status,
       created_by: userId,
@@ -746,6 +779,10 @@ export async function createProductionEntry(
         seen_by_user_id: input.seen_by_user_id ?? null,
         instructed_by_user_id: input.instructed_by_user_id ?? null,
         instructed_by,
+        fee_note_no,
+        insured,
+        claim_policy_number,
+        paid_status,
         remarks: input.remarks?.trim() || null,
         status,
         created_by: userId,
@@ -760,9 +797,10 @@ export async function createProductionEntry(
   const result = await query<DbProductionEntry>(
     `INSERT INTO production_entries (
       production_date, insurer_id, registration_number, assignment, amount, amount_without_vat,
-      done_by_user_id, seen_by_user_id, instructed_by_user_id, instructed_by, remarks, status,
+      done_by_user_id, seen_by_user_id, instructed_by_user_id, instructed_by,
+      fee_note_no, insured, claim_policy_number, paid_status, remarks, status,
       created_by, updated_by
-    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING *`,
+    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18) RETURNING *`,
     [
       dateOnly(input.production_date),
       input.insurer_id,
@@ -774,6 +812,10 @@ export async function createProductionEntry(
       input.seen_by_user_id ?? null,
       input.instructed_by_user_id ?? null,
       instructed_by,
+      fee_note_no,
+      insured,
+      claim_policy_number,
+      paid_status,
       input.remarks?.trim() || null,
       status,
       userId,
@@ -795,6 +837,10 @@ export async function updateProductionEntry(
   const reg = input.registration_number.trim().toUpperCase();
   const assignment = normalizeAssignment(input.assignment);
   const instructed_by = instructedByText(input);
+  const fee_note_no = textOrNull(input.fee_note_no);
+  const insured = textOrNull(input.insured);
+  const claim_policy_number = textOrNull(input.claim_policy_number);
+  const paid_status = normalizePaidStatus(input.paid_status);
   const now = new Date().toISOString();
 
   if (isJsonMode()) {
@@ -813,6 +859,10 @@ export async function updateProductionEntry(
       seen_by_user_id: input.seen_by_user_id ?? null,
       instructed_by_user_id: input.instructed_by_user_id ?? null,
       instructed_by,
+      fee_note_no,
+      insured,
+      claim_policy_number,
+      paid_status,
       remarks: input.remarks?.trim() || null,
       status,
       updated_by: userId,
@@ -838,6 +888,10 @@ export async function updateProductionEntry(
         seen_by_user_id: input.seen_by_user_id ?? null,
         instructed_by_user_id: input.instructed_by_user_id ?? null,
         instructed_by,
+        fee_note_no,
+        insured,
+        claim_policy_number,
+        paid_status,
         remarks: input.remarks?.trim() || null,
         status,
         updated_by: userId,
@@ -851,9 +905,10 @@ export async function updateProductionEntry(
   const result = await query<DbProductionEntry>(
     `UPDATE production_entries SET
       production_date=$1, insurer_id=$2, registration_number=$3, assignment=$4, amount=$5, amount_without_vat=$6,
-      done_by_user_id=$7, seen_by_user_id=$8, instructed_by_user_id=$9, instructed_by=$10, remarks=$11, status=$12,
-      updated_by=$13, updated_at=NOW()
-     WHERE id=$14 RETURNING *`,
+      done_by_user_id=$7, seen_by_user_id=$8, instructed_by_user_id=$9, instructed_by=$10,
+      fee_note_no=$11, insured=$12, claim_policy_number=$13, paid_status=$14, remarks=$15, status=$16,
+      updated_by=$17, updated_at=NOW()
+     WHERE id=$18 RETURNING *`,
     [
       dateOnly(input.production_date),
       input.insurer_id,
@@ -865,6 +920,10 @@ export async function updateProductionEntry(
       input.seen_by_user_id ?? null,
       input.instructed_by_user_id ?? null,
       instructed_by,
+      fee_note_no,
+      insured,
+      claim_policy_number,
+      paid_status,
       input.remarks?.trim() || null,
       status,
       userId,

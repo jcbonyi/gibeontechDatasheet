@@ -4,7 +4,7 @@ import { Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { Download, Pencil, Plus, Search, Trash2, Upload } from 'lucide-react';
-import { formatMoney, PRODUCTION_STATUS_LABELS, formatDisplayDate, type ProductionStatus } from '@/lib/productionConfig';
+import { formatMoney, PRODUCTION_STATUS_LABELS, formatDisplayDate, PAID_STATUS_LABELS, type ProductionStatus, type PaidStatus } from '@/lib/productionConfig';
 import { canDeleteProductionEntry, canManageProduction } from '@/lib/productionPermissions';
 import { useAuth } from '@/context/AuthContext';
 import { useProductionLookups } from '@/components/ProductionEntryForm';
@@ -20,6 +20,10 @@ interface EntryRow {
   done_by_name?: string | null;
   seen_by_name?: string | null;
   instructed_by_name?: string | null;
+  fee_note_no?: string | null;
+  insured?: string | null;
+  claim_policy_number?: string | null;
+  paid_status?: PaidStatus;
   status: ProductionStatus;
 }
 
@@ -63,6 +67,7 @@ function ProductionRegisterInner() {
   const [instructedBy, setInstructedBy] = useState('');
   const [regNo, setRegNo] = useState('');
   const [status, setStatus] = useState('');
+  const [paid, setPaid] = useState('');
   const [q, setQ] = useState('');
   const [importing, setImporting] = useState(false);
   const [importMessage, setImportMessage] = useState('');
@@ -82,6 +87,7 @@ function ProductionRegisterInner() {
     setInstructedBy(searchParams.get('instructedBy') || '');
     setRegNo(searchParams.get('regNo') || '');
     setStatus(searchParams.get('status') || '');
+    setPaid(searchParams.get('paid') || '');
     setQ(searchParams.get('q') || '');
     setFiltersReady(true);
   }, [searchParams]);
@@ -96,9 +102,10 @@ function ProductionRegisterInner() {
     if (instructedBy) p.set('instructedBy', instructedBy);
     if (regNo) p.set('regNo', regNo);
     if (status) p.set('status', status);
+    if (paid) p.set('paid', paid);
     if (q) p.set('q', q);
     return p.toString();
-  }, [doneBy, fromDate, instructedBy, insurerId, q, regNo, seenBy, status, toDate]);
+  }, [doneBy, fromDate, instructedBy, insurerId, paid, q, regNo, seenBy, status, toDate]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -148,9 +155,12 @@ function ProductionRegisterInner() {
     }
   };
 
-  const exportUrl = (format: string) => {
+  const exportUrl = (format: string, pack?: string) => {
     const qs = queryString();
-    return `/api/production/export?format=${format}${qs ? `&${qs}` : ''}`;
+    const p = new URLSearchParams(qs);
+    p.set('format', format);
+    if (pack) p.set('pack', pack);
+    return `/api/production/export?${p.toString()}`;
   };
 
   const handleDelete = async (id: number, reg: string) => {
@@ -234,6 +244,10 @@ function ProductionRegisterInner() {
             <Download className="h-4 w-4" />
             Excel
           </a>
+          <a href={exportUrl('xlsx', 'statement')} className="btn-secondary">
+            <Download className="h-4 w-4" />
+            Statement
+          </a>
           <a href={exportUrl('pdf')} className="btn-secondary">
             PDF
           </a>
@@ -255,12 +269,13 @@ function ProductionRegisterInner() {
         has headers:{' '}
         <span className="font-semibold text-slate-700">
           DATE · INSURER · REG NO · ASSIGNMENT · AMOUNT · WITHOUT VAT · DONE BY · SEEN BY ·
-          INSTRUCTED BY
+          INSTRUCTED BY · FEE NOTE NO · INSURED · CLAIM/POLICY NUMBER · PAID
         </span>
         . Missing insurers and Done/Seen staff names are created automatically. Instructed By and
-        Assignment accept free text (known types are normalized when possible). Use the{' '}
-        <span className="font-semibold text-slate-700">All</span> date preset to see every month
-        after import.
+        Assignment accept free text. Use <span className="font-semibold text-slate-700">Statement</span>{' '}
+        for Excel with Fee Note / Insured / Claim / Paid columns (standard Excel &amp; PDF omit those).
+        Use the <span className="font-semibold text-slate-700">All</span> date preset to see every
+        month after import.
       </div>
 
       <div className="section-card mb-4 !py-4">
@@ -323,9 +338,14 @@ function ProductionRegisterInner() {
             <option value="completed">Completed</option>
             <option value="cancelled">Cancelled</option>
           </select>
+          <select className="form-input" value={paid} onChange={(e) => setPaid(e.target.value)}>
+            <option value="">Paid — all</option>
+            <option value="paid">Paid</option>
+            <option value="unpaid">Unpaid</option>
+          </select>
           <input
             className="form-input sm:col-span-2"
-            placeholder="Search reg, insurer, staff, amount…"
+            placeholder="Search reg, insurer, staff, fee note, insured…"
             value={q}
             onChange={(e) => setQ(e.target.value)}
           />
@@ -351,6 +371,10 @@ function ProductionRegisterInner() {
                     <th>Insurer</th>
                     <th>Amount</th>
                     <th>Without VAT</th>
+                    <th>Fee Note No.</th>
+                    <th>Insured</th>
+                    <th>Claim/Policy</th>
+                    <th>Paid</th>
                     <th>Done By</th>
                     <th>Seen By</th>
                     <th>Instructed By</th>
@@ -367,6 +391,10 @@ function ProductionRegisterInner() {
                       <td>{e.insurer_name || '—'}</td>
                       <td>{formatMoney(e.amount)}</td>
                       <td>{formatMoney(e.amount_without_vat)}</td>
+                      <td>{e.fee_note_no || '—'}</td>
+                      <td>{e.insured || '—'}</td>
+                      <td>{e.claim_policy_number || '—'}</td>
+                      <td>{PAID_STATUS_LABELS[e.paid_status === 'paid' ? 'paid' : 'unpaid']}</td>
                       <td>{e.done_by_name || '—'}</td>
                       <td>{e.seen_by_name || '—'}</td>
                       <td>{e.instructed_by_name || '—'}</td>

@@ -12,7 +12,7 @@ import {
   resolveProductionPeople,
   updateProductionEntry,
 } from '@/lib/productionDb';
-import { PRODUCTION_STATUSES, normalizeAssignment, type ProductionStatus } from '@/lib/productionConfig';
+import { PRODUCTION_STATUSES, normalizeAssignment, normalizePaidStatus, type ProductionStatus } from '@/lib/productionConfig';
 
 export async function GET(
   req: NextRequest,
@@ -55,6 +55,9 @@ export async function PATCH(
         ? Number(body.amount_without_vat)
         : Number(existing.amount_without_vat);
     const status = String(body.status ?? existing.status) as ProductionStatus;
+    const paid_status = normalizePaidStatus(
+      body.paid_status !== undefined ? body.paid_status : existing.paid_status,
+    );
     const assignmentRaw =
       body.assignment !== undefined ? body.assignment : existing.assignment;
     const assignment = normalizeAssignment(assignmentRaw);
@@ -120,6 +123,14 @@ export async function PATCH(
         seen_by_user_id: people.seen_by_user_id,
         instructed_by: people.instructed_by,
         instructed_by_user_id: null,
+        fee_note_no:
+          body.fee_note_no !== undefined ? body.fee_note_no : existing.fee_note_no,
+        insured: body.insured !== undefined ? body.insured : existing.insured,
+        claim_policy_number:
+          body.claim_policy_number !== undefined
+            ? body.claim_policy_number
+            : existing.claim_policy_number,
+        paid_status,
         remarks: body.remarks !== undefined ? body.remarks : existing.remarks,
         status,
       },
