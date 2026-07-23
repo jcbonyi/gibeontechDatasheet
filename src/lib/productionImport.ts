@@ -1,5 +1,5 @@
 import ExcelJS from 'exceljs';
-import { amountWithoutVat, normalizeAssignment } from '@/lib/productionConfig';
+import { normalizeAssignment } from '@/lib/productionConfig';
 import type { ProductionEntryInput } from '@/lib/productionDb';
 
 export interface ParsedProductionRow {
@@ -411,7 +411,7 @@ export function buildImportTemplateBuffer(): Promise<Buffer> {
     'KAA 123A',
     'Assessment',
     11600,
-    amountWithoutVat(11600),
+    10000,
     'Jane Assessor',
     'John Manager',
     'Insurer Desk',
@@ -456,6 +456,7 @@ export function toEntryInput(
     registration_number: row.registration_number,
     assignment: row.assignment,
     amount: row.amount,
+    amount_without_vat: row.amount_without_vat ?? 0,
     done_by_user_id: doneBy,
     seen_by_user_id: seenBy,
     instructed_by: row.instructed_by_name?.trim() || null,

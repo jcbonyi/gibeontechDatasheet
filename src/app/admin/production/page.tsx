@@ -170,7 +170,8 @@ export default function AdminProductionPage() {
               max="1"
             />
             <p className="text-xs text-slate-500">
-              Amount without VAT = Amount ÷ (1 + VAT). Amounts are treated as VAT-inclusive.
+              Reference rate only. Amount and Amount without VAT are entered separately (not
+              auto-calculated).
             </p>
             <button type="submit" className="btn-primary">Save settings</button>
           </form>

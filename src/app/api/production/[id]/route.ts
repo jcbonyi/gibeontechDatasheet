@@ -50,6 +50,10 @@ export async function PATCH(
       body.registration_number ?? existing.registration_number,
     ).trim();
     const amount = Number(body.amount ?? existing.amount);
+    const amount_without_vat =
+      body.amount_without_vat !== undefined
+        ? Number(body.amount_without_vat)
+        : Number(existing.amount_without_vat);
     const status = String(body.status ?? existing.status) as ProductionStatus;
     const assignmentRaw =
       body.assignment !== undefined ? body.assignment : existing.assignment;
@@ -59,6 +63,9 @@ export async function PATCH(
       return badRequest('Date and registration number are required');
     }
     if (!Number.isFinite(amount) || amount < 0) return badRequest('Valid amount is required');
+    if (!Number.isFinite(amount_without_vat) || amount_without_vat < 0) {
+      return badRequest('Valid amount without VAT is required');
+    }
     if (!PRODUCTION_STATUSES.includes(status)) return badRequest('Invalid status');
 
     let people;
@@ -108,6 +115,7 @@ export async function PATCH(
         registration_number,
         assignment,
         amount,
+        amount_without_vat,
         done_by_user_id: people.done_by_user_id,
         seen_by_user_id: people.seen_by_user_id,
         instructed_by: people.instructed_by,

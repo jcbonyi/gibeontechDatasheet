@@ -1,8 +1,8 @@
 /**
  * Production Management defaults (locked for v1):
  * - Same JWT login as Assessment Tracker
- * - VAT-inclusive amounts; without VAT = amount / (1 + VAT_RATE)
- * - Done By / Seen By / Instructed By = existing users
+ * - Amount and Amount without VAT are entered independently (not auto-derived)
+ * - Done By / Seen By = users; Instructed By = free text
  * - Role map: Admin=Administrator, PO/Ops=Manager, Assessor=Staff
  */
 

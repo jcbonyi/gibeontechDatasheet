@@ -64,12 +64,16 @@ export async function POST(req: NextRequest) {
     const production_date = String(body.production_date || '').slice(0, 10);
     const registration_number = String(body.registration_number || '').trim();
     const amount = Number(body.amount);
+    const amount_without_vat = Number(body.amount_without_vat ?? 0);
     const status = String(body.status || 'completed') as ProductionStatus;
 
     if (!production_date || !registration_number) {
       return badRequest('Date and registration number are required');
     }
     if (!Number.isFinite(amount) || amount < 0) return badRequest('Valid amount is required');
+    if (!Number.isFinite(amount_without_vat) || amount_without_vat < 0) {
+      return badRequest('Valid amount without VAT is required');
+    }
     if (!PRODUCTION_STATUSES.includes(status)) return badRequest('Invalid status');
 
     const assignment = normalizeAssignment(body.assignment);
@@ -88,6 +92,7 @@ export async function POST(req: NextRequest) {
         registration_number,
         assignment,
         amount,
+        amount_without_vat,
         done_by_user_id: people.done_by_user_id,
         seen_by_user_id: people.seen_by_user_id,
         instructed_by: people.instructed_by,

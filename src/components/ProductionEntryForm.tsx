@@ -1,12 +1,10 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
-  amountWithoutVat,
   ASSIGNMENT_TYPES,
-  formatMoney,
   PRODUCTION_STATUS_LABELS,
   PRODUCTION_STATUSES,
   type AssignmentType,
@@ -27,6 +25,7 @@ interface EntryFormProps {
     registration_number: string;
     assignment?: AssignmentType | string | null;
     amount: number;
+    amount_without_vat: number;
     done_by_user_id: number | null;
     done_by_name: string | null;
     seen_by_user_id: number | null;
@@ -47,7 +46,6 @@ export function ProductionEntryForm({
   initial,
   insurers,
   users,
-  vatRate,
   onSaved,
 }: EntryFormProps) {
   const router = useRouter();
@@ -62,6 +60,9 @@ export function ProductionEntryForm({
   const [regNo, setRegNo] = useState(initial?.registration_number || '');
   const [assignment, setAssignment] = useState(initial?.assignment || '');
   const [amount, setAmount] = useState(String(initial?.amount ?? ''));
+  const [amountWithoutVat, setAmountWithoutVat] = useState(
+    String(initial?.amount_without_vat ?? ''),
+  );
   const [doneBy, setDoneBy] = useState(
     initial?.done_by_name ||
       users.find((u) => u.id === initial?.done_by_user_id)?.name ||
@@ -101,18 +102,13 @@ export function ProductionEntryForm({
     }
   }, [users, initial?.seen_by_user_id, seenBy]);
 
-  const net = useMemo(() => {
-    const n = Number(amount);
-    if (!Number.isFinite(n)) return 0;
-    return amountWithoutVat(n, vatRate);
-  }, [amount, vatRate]);
-
   const payload = () => ({
     production_date: productionDate,
     insurer_name: insurerName.trim(),
     registration_number: regNo,
     assignment,
     amount: Number(amount),
+    amount_without_vat: amountWithoutVat === '' ? 0 : Number(amountWithoutVat),
     done_by_name: doneBy.trim() || null,
     seen_by_name: seenBy.trim() || null,
     instructed_by: instructedBy.trim() || null,
@@ -138,6 +134,7 @@ export function ProductionEntryForm({
         setRegNo('');
         setAssignment('');
         setAmount('');
+        setAmountWithoutVat('');
         setRemarks('');
         setProductionDate(new Date().toISOString().slice(0, 10));
         onSaved?.(data.entry.id);
@@ -215,7 +212,7 @@ export function ProductionEntryForm({
           </datalist>
         </div>
         <div>
-          <label className="form-label">Amount (incl. VAT)</label>
+          <label className="form-label">Amount</label>
           <input
             type="number"
             step="0.01"
@@ -228,8 +225,14 @@ export function ProductionEntryForm({
         </div>
         <div>
           <label className="form-label">Amount without VAT</label>
-          <input className="form-input bg-slate-50" value={formatMoney(net)} readOnly />
-          <p className="mt-1 text-xs text-slate-500">Auto · VAT {(vatRate * 100).toFixed(0)}%</p>
+          <input
+            type="number"
+            step="0.01"
+            min="0"
+            className="form-input"
+            value={amountWithoutVat}
+            onChange={(e) => setAmountWithoutVat(e.target.value)}
+          />
         </div>
         <div>
           <label className="form-label">Status</label>

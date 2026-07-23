@@ -47,6 +47,7 @@ export default function EditProductionEntryPage() {
                 registration_number: String(initial.registration_number || ''),
                 assignment: initial.assignment != null ? String(initial.assignment) : '',
                 amount: Number(initial.amount),
+                amount_without_vat: Number(initial.amount_without_vat ?? 0),
                 done_by_user_id: (initial.done_by_user_id as number | null) ?? null,
                 done_by_name: (initial.done_by_name as string | null) ?? null,
                 seen_by_user_id: (initial.seen_by_user_id as number | null) ?? null,

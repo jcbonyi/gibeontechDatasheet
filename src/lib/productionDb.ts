@@ -4,7 +4,7 @@ import path from 'path';
 import { hashPassword } from '@/lib/auth';
 import { createUserRecord, ensureDb, isJsonMode, isSupabaseMode, query } from '@/lib/db';
 import { getSupabaseAdmin } from '@/lib/supabase';
-import { amountWithoutVat, normalizeAssignment, VAT_RATE, type ProductionStatus } from '@/lib/productionConfig';
+import { normalizeAssignment, VAT_RATE, type ProductionStatus } from '@/lib/productionConfig';
 
 export interface DbInsurer {
   id: number;
@@ -666,6 +666,8 @@ export type ProductionEntryInput = {
   registration_number: string;
   assignment?: string | null;
   amount: number;
+  /** Entered as provided — not derived from amount / VAT. */
+  amount_without_vat?: number | null;
   done_by_user_id?: number | null;
   seen_by_user_id?: number | null;
   instructed_by?: string | null;
@@ -680,14 +682,19 @@ function instructedByText(input: ProductionEntryInput): string | null {
   return null;
 }
 
+function resolveAmountWithoutVat(input: ProductionEntryInput): number {
+  if (input.amount_without_vat == null) return 0;
+  const n = num(input.amount_without_vat);
+  return n < 0 ? 0 : Math.round(n * 100) / 100;
+}
+
 export async function createProductionEntry(
   input: ProductionEntryInput,
   userId: number,
 ): Promise<DbProductionEntry> {
   await ensureDb();
-  const vat = await getVatRate();
   const amount = num(input.amount);
-  const without = amountWithoutVat(amount, vat);
+  const without = resolveAmountWithoutVat(input);
   const now = new Date().toISOString();
   const status = input.status || 'completed';
   const reg = input.registration_number.trim().toUpperCase();
@@ -782,9 +789,8 @@ export async function updateProductionEntry(
   userId: number,
 ): Promise<DbProductionEntry | null> {
   await ensureDb();
-  const vat = await getVatRate();
   const amount = num(input.amount);
-  const without = amountWithoutVat(amount, vat);
+  const without = resolveAmountWithoutVat(input);
   const status = input.status || 'completed';
   const reg = input.registration_number.trim().toUpperCase();
   const assignment = normalizeAssignment(input.assignment);
