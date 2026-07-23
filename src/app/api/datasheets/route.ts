@@ -52,11 +52,13 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     let formData = (body.formData || createDefaultFormData()) as Record<string, unknown>;
     const status = (
-      body.status === 'pending_review' || body.status === 'submitted'
-        ? 'pending_review'
-        : body.status === 'in_progress'
-          ? 'in_progress'
-          : 'instructed'
+      body.status === 'submitted'
+        ? 'submitted'
+        : body.status === 'pending_review'
+          ? 'pending_review'
+          : body.status === 'in_progress'
+            ? 'in_progress'
+            : 'instructed'
     ) as DatasheetStatus;
     formData = applySeenBy(formData, user.name, user.role);
 
@@ -76,6 +78,7 @@ export async function POST(req: NextRequest) {
           assigned_to: null,
           assigned_by: null,
           assigned_at: null,
+          done_by: null,
           reopen_reason: null,
           date_of_instruction: denorm.date_of_instruction,
           client_insurer: denorm.client_insurer,

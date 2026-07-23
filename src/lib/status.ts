@@ -6,8 +6,10 @@ export const DATASHEET_STATUSES: DatasheetStatus[] = [
   'allocated',
   'in_progress',
   'awaiting_documents',
+  'submitted',
   'pending_review',
   'under_review',
+  'approved',
   'queried',
   'report_issued',
   'on_hold',
@@ -20,8 +22,10 @@ export const STATUS_LABELS: Record<DatasheetStatus, string> = {
   allocated: 'Allocated',
   in_progress: 'In Progress',
   awaiting_documents: 'Awaiting Documents',
+  submitted: 'Submitted',
   pending_review: 'Pending Review',
   under_review: 'Under Review',
+  approved: 'Approved',
   queried: 'Queried',
   report_issued: 'Report Issued',
   on_hold: 'On Hold',
@@ -34,8 +38,10 @@ export const STATUS_DESCRIPTIONS: Record<DatasheetStatus, string> = {
   allocated: 'Assigned to an assessor',
   in_progress: 'Assessment / inspection underway',
   awaiting_documents: 'Waiting for documents from insurer or insured',
+  submitted: 'Assessor has submitted the file',
   pending_review: 'Submitted for internal technical review',
   under_review: 'Being reviewed by operations / principal',
+  approved: 'Internally approved — ready for report issue',
   queried: 'Clarification or amendments required',
   report_issued: 'Final report issued to the client',
   on_hold: 'Temporarily suspended',
@@ -49,8 +55,10 @@ export const STATUS_BADGE_CLASS: Record<DatasheetStatus, string> = {
   allocated: 'status-allocated',
   in_progress: 'status-in-progress',
   awaiting_documents: 'status-awaiting',
+  submitted: 'status-submitted',
   pending_review: 'status-pending-review',
   under_review: 'status-under-review',
+  approved: 'status-approved',
   queried: 'status-queried',
   report_issued: 'status-report-issued',
   on_hold: 'status-on-hold',
@@ -64,8 +72,10 @@ export const BOARD_STATUSES: DatasheetStatus[] = [
   'allocated',
   'in_progress',
   'awaiting_documents',
+  'submitted',
   'pending_review',
   'under_review',
+  'approved',
   'queried',
   'on_hold',
   'report_issued',
@@ -77,8 +87,10 @@ export const OPEN_STATUSES: DatasheetStatus[] = [
   'allocated',
   'in_progress',
   'awaiting_documents',
+  'submitted',
   'pending_review',
   'under_review',
+  'approved',
   'queried',
   'on_hold',
 ];
@@ -93,6 +105,14 @@ export const ASSESSOR_EDITABLE_STATUSES: DatasheetStatus[] = [
   'on_hold',
 ];
 
+/** Statuses an Assessor may move a task into (inclusive of Pending Review). */
+export const ASSESSOR_TARGET_STATUSES: DatasheetStatus[] = [
+  'in_progress',
+  'awaiting_documents',
+  'submitted',
+  'pending_review',
+];
+
 /** Terminal / completed — locked unless reopened. */
 export const TERMINAL_STATUSES: DatasheetStatus[] = [
   'report_issued',
@@ -102,9 +122,6 @@ export const TERMINAL_STATUSES: DatasheetStatus[] = [
 
 const LEGACY_STATUS_MAP: Record<string, DatasheetStatus> = {
   draft: 'instructed',
-  submitted: 'pending_review',
-  approved: 'report_issued',
-  under_review: 'under_review',
 };
 
 export function normalizeStatus(raw: string | null | undefined): DatasheetStatus {
@@ -139,11 +156,13 @@ export interface StatusAction {
 export const STATUS_TRANSITIONS: Record<DatasheetStatus, DatasheetStatus[]> = {
   instructed: ['allocated', 'in_progress', 'awaiting_documents', 'on_hold', 'cancelled'],
   allocated: ['in_progress', 'awaiting_documents', 'on_hold', 'cancelled'],
-  in_progress: ['awaiting_documents', 'pending_review', 'on_hold', 'queried'],
-  awaiting_documents: ['in_progress', 'pending_review', 'on_hold', 'cancelled'],
-  pending_review: ['under_review', 'queried', 'report_issued', 'on_hold'],
-  under_review: ['queried', 'report_issued', 'pending_review', 'on_hold'],
-  queried: ['in_progress', 'awaiting_documents', 'pending_review', 'on_hold'],
+  in_progress: ['awaiting_documents', 'submitted', 'pending_review', 'on_hold', 'queried'],
+  awaiting_documents: ['in_progress', 'submitted', 'pending_review', 'on_hold', 'cancelled'],
+  submitted: ['pending_review', 'under_review', 'queried', 'on_hold'],
+  pending_review: ['under_review', 'approved', 'queried', 'report_issued', 'on_hold'],
+  under_review: ['approved', 'queried', 'pending_review', 'report_issued', 'on_hold'],
+  approved: ['report_issued', 'closed', 'queried'],
+  queried: ['in_progress', 'awaiting_documents', 'submitted', 'pending_review', 'on_hold'],
   report_issued: ['closed', 'queried'],
   on_hold: ['in_progress', 'awaiting_documents', 'allocated', 'cancelled'],
   closed: [],

@@ -99,8 +99,14 @@
   .status-pending-review {
     @apply bg-amber-100 text-amber-900 ring-1 ring-amber-200/60;
   }
+  .status-submitted {
+    @apply bg-teal-100 text-teal-900 ring-1 ring-teal-200/60;
+  }
   .status-under-review {
     @apply bg-violet-100 text-violet-800 ring-1 ring-violet-200/60;
+  }
+  .status-approved {
+    @apply bg-lime-100 text-lime-900 ring-1 ring-lime-200/60;
   }
   .status-queried {
     @apply bg-rose-100 text-rose-800 ring-1 ring-rose-200/60;
@@ -119,17 +125,11 @@
   }
 
   /* legacy aliases */
-  .status-submitted {
-    @apply status-pending-review;
-  }
   .status-draft {
     @apply status-instructed;
   }
   .status-review {
     @apply status-under-review;
-  }
-  .status-approved {
-    @apply status-report-issued;
   }
 
   .task-board {

@@ -24,6 +24,7 @@ export interface DbDatasheet {
   assigned_to: number | null;
   assigned_by: number | null;
   assigned_at: string | null;
+  done_by: number | null;
   reopen_reason: string | null;
   form_data: Record<string, unknown>;
   claim_no: string | null;
@@ -44,6 +45,7 @@ export interface DbDatasheet {
 export interface DbDatasheetListRow extends DbDatasheet {
   created_by_name?: string | null;
   assigned_to_name?: string | null;
+  done_by_name?: string | null;
   reviewed_by_name?: string | null;
 }
 
@@ -103,6 +105,7 @@ function loadJsonStore(): JsonStore {
         assigned_to: d.assigned_to ?? null,
         assigned_by: d.assigned_by ?? null,
         assigned_at: d.assigned_at ?? null,
+        done_by: d.done_by ?? null,
         reopen_reason: d.reopen_reason ?? null,
         status: normalizeStatus(d.status || 'instructed'),
       })),
@@ -217,15 +220,16 @@ async function initPostgres(): Promise<void> {
       serial_no TEXT UNIQUE NOT NULL,
       status TEXT NOT NULL CHECK (status IN (
         'instructed', 'allocated', 'in_progress', 'awaiting_documents',
-        'pending_review', 'under_review', 'queried', 'report_issued',
+        'submitted', 'pending_review', 'under_review', 'approved', 'queried', 'report_issued',
         'on_hold', 'closed', 'cancelled',
-        'draft', 'submitted', 'approved'
+        'draft'
       )),
       created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
       updated_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
       assigned_to INTEGER REFERENCES users(id) ON DELETE SET NULL,
       assigned_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
       assigned_at TIMESTAMPTZ,
+      done_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
       reopen_reason TEXT,
       form_data JSONB NOT NULL DEFAULT '{}'::jsonb,
       claim_no TEXT,
@@ -245,19 +249,20 @@ async function initPostgres(): Promise<void> {
     ALTER TABLE datasheets ADD COLUMN IF NOT EXISTS assigned_at TIMESTAMPTZ;
   `);
   await pool.query(`
+    ALTER TABLE datasheets ADD COLUMN IF NOT EXISTS done_by INTEGER REFERENCES users(id) ON DELETE SET NULL;
+  `);
+  await pool.query(`
     ALTER TABLE datasheets ADD COLUMN IF NOT EXISTS reopen_reason TEXT;
   `);
 
-  // Migrate legacy statuses + refresh check constraint
+  // Migrate legacy draft only; submitted & approved are first-class statuses
   await pool.query(`UPDATE datasheets SET status = 'instructed' WHERE status = 'draft'`);
-  await pool.query(`UPDATE datasheets SET status = 'pending_review' WHERE status = 'submitted'`);
-  await pool.query(`UPDATE datasheets SET status = 'report_issued' WHERE status = 'approved'`);
   await pool.query(`ALTER TABLE datasheets DROP CONSTRAINT IF EXISTS datasheets_status_check`);
   await pool.query(`
     ALTER TABLE datasheets ADD CONSTRAINT datasheets_status_check
       CHECK (status IN (
         'instructed', 'allocated', 'in_progress', 'awaiting_documents',
-        'pending_review', 'under_review', 'queried', 'report_issued',
+        'submitted', 'pending_review', 'under_review', 'approved', 'queried', 'report_issued',
         'on_hold', 'closed', 'cancelled'
       ))
   `);
@@ -299,6 +304,9 @@ async function initPostgres(): Promise<void> {
 
   await pool.query(`
     CREATE INDEX IF NOT EXISTS idx_datasheets_assigned_to ON datasheets (assigned_to);
+  `);
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS idx_datasheets_done_by ON datasheets (done_by);
   `);
 
   await pool.query(`
@@ -564,6 +572,7 @@ async function supabaseQuery<T extends QueryResultRow>(
         assigned_to: null,
         assigned_by: null,
         assigned_at: null,
+        done_by: null,
         reopen_reason: null,
       })
       .select()
@@ -713,6 +722,7 @@ function jsonQuery<T extends QueryResultRow>(text: string, params: unknown[]): Q
       assigned_to: null,
       assigned_by: null,
       assigned_at: null,
+      done_by: null,
       reopen_reason: null,
       form_data,
       claim_no,
@@ -802,6 +812,7 @@ function enrichDatasheetRows(rows: DbDatasheet[], users: DbUser[]): DbDatasheetL
     status: normalizeStatus(row.status),
     created_by_name: row.created_by ? userMap.get(row.created_by) || null : null,
     assigned_to_name: row.assigned_to ? userMap.get(row.assigned_to) || null : null,
+    done_by_name: row.done_by ? userMap.get(row.done_by) || null : null,
     reviewed_by_name: row.reviewed_by ? userMap.get(row.reviewed_by) || null : null,
   }));
 }
@@ -1049,6 +1060,7 @@ export async function updateDatasheetRecord(
       | 'assigned_to'
       | 'assigned_by'
       | 'assigned_at'
+      | 'done_by'
       | 'reopen_reason'
       | 'date_of_instruction'
       | 'client_insurer'
@@ -1256,7 +1268,7 @@ export async function getDatasheetById(id: number): Promise<DbDatasheet | null> 
   const result = await query<DbDatasheet>('SELECT * FROM datasheets WHERE id = $1', [id]);
   const row = result.rows[0];
   if (!row) return null;
-  return { ...row, status: normalizeStatus(row.status) };
+  return { ...row, status: normalizeStatus(row.status), done_by: row.done_by ?? null };
 }
 
 function maxSerialSuffix(prefix: string, serials: string[]): number {
@@ -1341,6 +1353,7 @@ export async function insertDatasheetRecord(
         assigned_to: row.assigned_to,
         assigned_by: row.assigned_by,
         assigned_at: row.assigned_at,
+        done_by: row.done_by ?? null,
         reopen_reason: row.reopen_reason,
         date_of_instruction: row.date_of_instruction ?? null,
         client_insurer: row.client_insurer ?? null,
@@ -1362,10 +1375,10 @@ export async function insertDatasheetRecord(
   const result = await pool.query<DbDatasheet>(
     `INSERT INTO datasheets (
       serial_no, status, created_by, updated_by, form_data, claim_no, reg_no,
-      assigned_to, assigned_by, assigned_at, reopen_reason,
+      assigned_to, assigned_by, assigned_at, done_by, reopen_reason,
       date_of_instruction, client_insurer, form_types, cancel_reason, query_reason,
       reviewed_by, reviewed_at, search_text, delay_notes
-    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20) RETURNING *`,
+    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21) RETURNING *`,
     [
       row.serial_no,
       row.status,
@@ -1377,6 +1390,7 @@ export async function insertDatasheetRecord(
       row.assigned_to,
       row.assigned_by,
       row.assigned_at,
+      row.done_by ?? null,
       row.reopen_reason,
       row.date_of_instruction ?? null,
       row.client_insurer ?? null,

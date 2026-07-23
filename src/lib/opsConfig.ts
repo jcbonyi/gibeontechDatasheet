@@ -111,6 +111,13 @@ export const FORM_TYPE_CHECKLISTS: Record<FormType, ChecklistTemplateItem[]> = {
     { key: 'photos_overview', label: 'Overview photos (4 angles)', required: true },
     { key: 'photos_interior', label: 'Interior / odometer photos', required: true },
   ],
+  'Pre-theft': [
+    { key: 'claim_form', label: 'Claim Form', required: true },
+    { key: 'police_abstract', label: 'Police abstract / theft report', required: true },
+    { key: 'logbook', label: 'Logbook Copy', required: true },
+    { key: 'theft_circumstances', label: 'Theft circumstances statement', required: true },
+    { key: 'keys_remotes', label: 'Keys / remotes inventory (if available)', required: false },
+  ],
 };
 
 export function getChecklistForFormTypes(formTypes: FormType[]): ChecklistTemplateItem[] {

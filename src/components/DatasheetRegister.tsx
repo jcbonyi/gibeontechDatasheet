@@ -43,8 +43,10 @@ interface DatasheetRow {
   reg_no: string | null;
   created_by: number | null;
   assigned_to: number | null;
+  done_by?: number | null;
   created_by_name?: string | null;
   assigned_to_name?: string | null;
+  done_by_name?: string | null;
   created_at: string;
   updated_at: string;
   date_of_instruction: string | null;
@@ -427,6 +429,7 @@ export function DatasheetRegister() {
         </p>
         <p className="mt-0.5 text-xs text-slate-500">
           {row.assigned_to_name || row.created_by_name || 'Unassigned'}
+          {row.done_by_name ? ` · Done by ${row.done_by_name}` : ''}
         </p>
         {canAllocateRow(row.status) && (
           <div
@@ -868,6 +871,7 @@ export function DatasheetRegister() {
                   <th>Instruction</th>
                   <th>Age</th>
                   {viewAll && <th>Assessor</th>}
+                  {viewAll && <th>Done By</th>}
                   <th>Updated</th>
                   <th>Actions</th>
                 </tr>
@@ -892,6 +896,7 @@ export function DatasheetRegister() {
                       )}
                     </td>
                     {viewAll && <td>{row.assigned_to_name || row.created_by_name || '—'}</td>}
+                    {viewAll && <td>{row.done_by_name || '—'}</td>}
                     <td className="text-slate-500">{new Date(row.updated_at).toLocaleString()}</td>
                     <td>
                       <div className="flex flex-wrap items-center gap-2">

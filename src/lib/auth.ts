@@ -97,9 +97,10 @@ export function applySeenBy(
   userName: string,
   role?: UserRole,
 ): Record<string, unknown> {
-  // Seen By is the Assessor who attended — only stamp when the actor is an Assessor.
+  // Seen By is the Assessor who attended — stamp only when empty so view-all Assessors don't overwrite.
   if (role !== 'Assessor') return formData;
   const signOff = { ...((formData.signOff as Record<string, unknown>) || {}) };
-  signOff.seenBy = userName;
+  const existing = String(signOff.seenBy || '').trim();
+  if (!existing) signOff.seenBy = userName;
   return { ...formData, signOff };
 }

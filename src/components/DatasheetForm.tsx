@@ -12,13 +12,22 @@ import {
   DatasheetFormData,
   FORM_SECTIONS,
   FORM_TYPES,
+  FORM_TYPE_HINTS,
   FUEL_TYPES,
   GARAGE_ARRIVAL_OPTIONS,
   TYRE_TYPE_OPTIONS,
   DASHBOARD_WARNING_LIGHTS,
   hasInspectionForm,
+  hasPreTheftForm,
+  needsAssessmentPrefill,
   type DatasheetStatus,
+  type FormType,
 } from '@/types/datasheet';
+import {
+  buildPretheftFrom,
+  buildReinspectionFrom,
+  buildSupplementaryFrom,
+} from '@/lib/copyFromAssessment';
 import { ASSESSOR_EDITABLE_STATUSES, normalizeStatus, STATUS_LABELS } from '@/lib/status';
 import { EmbeddedInspectionForm } from '@/inspection/components/EmbeddedInspectionForm';
 import {
@@ -38,7 +47,7 @@ import { SignaturePad } from './SignaturePad';
 import { exportDatasheetPdf } from '@/utils/pdfExport';
 import { useAuth } from '@/context/AuthContext';
 import Link from 'next/link';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, Search } from 'lucide-react';
 
 interface DatasheetFormProps {
   initialData?: DatasheetFormData;
@@ -64,6 +73,11 @@ export function DatasheetForm({
   const [submitError, setSubmitError] = useState('');
   const [saveMessage, setSaveMessage] = useState('');
   const [isSaving, setIsSaving] = useState(false);
+  const [lookupBusy, setLookupBusy] = useState(false);
+  const [lookupMessage, setLookupMessage] = useState('');
+  const [lookupMatches, setLookupMatches] = useState<
+    { id: number; serial_no: string; reg_no: string | null; claim_no: string | null; client_insurer: string | null }[]
+  >([]);
 
   const {
     register,
@@ -84,6 +98,8 @@ export function DatasheetForm({
   const diagramMarks = watch('damage.vehicleDiagram');
   const formTypes = watch('header.formTypes');
   const isInspectionMode = hasInspectionForm(formTypes);
+  const isPreTheft = hasPreTheftForm(formTypes);
+  const showAssessmentPrefill = needsAssessmentPrefill(formTypes);
 
   useEffect(() => {
     if (initialData) reset(initialData);
@@ -103,9 +119,12 @@ export function DatasheetForm({
 
   useEffect(() => {
     if (!isInspectionMode && user?.role === 'Assessor' && user.name) {
-      setValue('signOff.seenBy', user.name);
+      const current = getValues('signOff.seenBy');
+      if (!String(current || '').trim()) {
+        setValue('signOff.seenBy', user.name);
+      }
     }
-  }, [isInspectionMode, user?.role, user?.name, setValue]);
+  }, [isInspectionMode, user?.role, user?.name, setValue, getValues]);
 
   const trackActiveSection = useCallback(() => {
     const offsets = FORM_SECTIONS.map((s) => {
@@ -160,22 +179,124 @@ export function DatasheetForm({
           setValue('inspection', createDefaultInspectionFormData(user?.name));
         }
       }
+      setLookupMessage('');
+      setLookupMatches([]);
       return;
     }
 
-    const withoutInspection = current.filter((t) => t !== 'Inspection');
-    if (withoutInspection.includes(type)) {
-      const next = withoutInspection.filter((t) => t !== type);
+    if (type === 'Pre-theft') {
+      if (current.includes('Pre-theft')) {
+        setValue('header.formTypes', ['Assessment'], { shouldValidate: true });
+      } else {
+        setValue('header.formTypes', ['Pre-theft'], { shouldValidate: true });
+        const seeded = buildPretheftFrom(null, {
+          seenBy: user?.role === 'Assessor' ? user.name : getValues('signOff.seenBy'),
+        });
+        // Keep any reg/claim already typed
+        const currentBasic = getValues('basicInfo');
+        seeded.basicInfo = {
+          ...seeded.basicInfo,
+          ...Object.fromEntries(
+            Object.entries(currentBasic).filter(([, v]) => String(v || '').trim()),
+          ),
+          dateOfInstruction: seeded.basicInfo.dateOfInstruction,
+        } as DatasheetFormData['basicInfo'];
+        reset(seeded);
+      }
+      setLookupMessage('');
+      setLookupMatches([]);
+      return;
+    }
+
+    const withoutExclusive = current.filter((t) => t !== 'Inspection' && t !== 'Pre-theft');
+    if (withoutExclusive.includes(type)) {
+      const next = withoutExclusive.filter((t) => t !== type);
       setValue('header.formTypes', next.length ? next : ['Assessment'], { shouldValidate: true });
     } else {
-      setValue('header.formTypes', [...withoutInspection, type], { shouldValidate: true });
+      setValue('header.formTypes', [...withoutExclusive, type], { shouldValidate: true });
+    }
+  };
+
+  const applyAssessmentPrefill = (
+    source: DatasheetFormData,
+    serial: string,
+    target: Extract<FormType, 'Re-inspection' | 'Supplementary'>,
+  ) => {
+    const opts = {
+      sourceSerial: serial,
+      seenBy: user?.role === 'Assessor' ? user.name : getValues('signOff.seenBy'),
+    };
+    const built =
+      target === 'Re-inspection'
+        ? buildReinspectionFrom(source, opts)
+        : buildSupplementaryFrom(source, opts);
+    // Preserve whichever follow-up types are currently selected
+    const keepTypes = getValues('header.formTypes').filter(
+      (t) => t === 'Re-inspection' || t === 'Supplementary',
+    ) as FormType[];
+    built.header.formTypes = keepTypes.length ? keepTypes : [target];
+    reset(built);
+    setLookupMessage(`Loaded vehicle & claim details from Assessment ${serial}`);
+    setLookupMatches([]);
+  };
+
+  const lookupAssessment = async () => {
+    const regNo = getValues('basicInfo.regNo')?.trim();
+    const claimNo = getValues('basicInfo.claimNo')?.trim();
+    if (!regNo && !claimNo) {
+      setLookupMessage('Enter registration number and/or claim number first');
+      return;
+    }
+    setLookupBusy(true);
+    setLookupMessage('');
+    try {
+      const params = new URLSearchParams();
+      if (regNo) params.set('regNo', regNo);
+      if (claimNo) params.set('claimNo', claimNo);
+      const res = await fetch(`/api/datasheets/lookup?${params}`);
+      const data = await res.json();
+      if (!res.ok) {
+        setLookupMessage(data.message || 'Lookup failed');
+        return;
+      }
+      setLookupMatches(data.matches || []);
+      if (!data.matches?.length) {
+        setLookupMessage('No prior Assessment found for this vehicle / claim');
+        return;
+      }
+      if (data.matched && data.formData) {
+        const prefer: Extract<FormType, 'Re-inspection' | 'Supplementary'> =
+          formTypes.includes('Re-inspection') ? 'Re-inspection' : 'Supplementary';
+        applyAssessmentPrefill(data.formData, data.matched.serial_no, prefer);
+      }
+    } catch {
+      setLookupMessage('Lookup failed');
+    } finally {
+      setLookupBusy(false);
+    }
+  };
+
+  const loadMatchById = async (id: number, serial: string) => {
+    setLookupBusy(true);
+    try {
+      const res = await fetch(`/api/datasheets/${id}`);
+      const data = await res.json();
+      if (!res.ok || !data.datasheet?.form_data) {
+        setLookupMessage(data.message || 'Could not load Assessment');
+        return;
+      }
+      const prefer: Extract<FormType, 'Re-inspection' | 'Supplementary'> =
+        formTypes.includes('Re-inspection') ? 'Re-inspection' : 'Supplementary';
+      applyAssessmentPrefill(data.datasheet.form_data, serial, prefer);
+    } finally {
+      setLookupBusy(false);
     }
   };
 
   const onSubmit = async (data: DatasheetFormData) => {
     setSubmitError('');
     try {
-      await onSave(data, 'pending_review');
+      await onSave(data, 'submitted');
     } catch (err) {
       setSubmitError(err instanceof Error ? err.message : 'Failed to submit');
     }
@@ -243,7 +364,11 @@ export function DatasheetForm({
         <FormField label="Form Type" required error={errors.header?.formTypes?.message}>
           <div className="flex flex-wrap gap-3">
             {FORM_TYPES.map((type) => (
-              <label key={type} className="flex items-center gap-2 text-sm">
+              <label
+                key={type}
+                className="flex items-center gap-2 text-sm"
+                title={FORM_TYPE_HINTS[type]}
+              >
                 <input
                   type="checkbox"
                   checked={formTypes.includes(type)}
@@ -255,7 +380,62 @@ export function DatasheetForm({
               </label>
             ))}
           </div>
+          {formTypes.map((t) => (
+            <p key={t} className="mt-1 text-xs text-slate-500">
+              {FORM_TYPE_HINTS[t]}
+            </p>
+          ))}
         </FormField>
+
+        {showAssessmentPrefill && !readOnly && (
+          <div className="mt-4 rounded-xl border border-brand-200 bg-brand-50/60 p-4">
+            <p className="text-sm font-semibold text-brand-900">
+              Load from prior Assessment
+            </p>
+            <p className="mt-1 text-xs text-slate-600">
+              Enter registration and/or claim number, then load vehicle and claim details from an
+              existing Assessment. Re-inspection keeps identity for post-repair notes;
+              Supplementary also carries prior parts for missed items.
+            </p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <button
+                type="button"
+                className="btn-secondary"
+                disabled={lookupBusy}
+                onClick={lookupAssessment}
+              >
+                <Search className="h-4 w-4" />
+                {lookupBusy ? 'Looking up…' : 'Find Assessment'}
+              </button>
+            </div>
+            {lookupMessage && <p className="mt-2 text-sm text-slate-700">{lookupMessage}</p>}
+            {lookupMatches.length > 1 && (
+              <ul className="mt-2 space-y-1 text-sm">
+                {lookupMatches.map((m) => (
+                  <li key={m.id} className="flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      className="font-medium text-brand-700 hover:underline"
+                      onClick={() => loadMatchById(m.id, m.serial_no)}
+                    >
+                      {m.serial_no}
+                    </button>
+                    <span className="text-slate-500">
+                      {m.reg_no || '—'} · {m.claim_no || '—'} · {m.client_insurer || '—'}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
+
+        {isPreTheft && (
+          <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+            Pre-theft is only for stolen subject vehicles. Garage arrival and repair advice are not
+            required.
+          </p>
+        )}
 
         {!isInspectionMode && (
           <>
@@ -427,6 +607,7 @@ export function DatasheetForm({
         </div>
       </FormSection>
 
+      {!isPreTheft && (
       <FormSection
         id="condition"
         number={4}
@@ -485,68 +666,97 @@ export function DatasheetForm({
           </FormField>
         </div>
       </FormSection>
+      )}
 
       <FormSection
         id="damage"
         number={5}
-        title="Damage & Transport"
-        description="Damage summary, diagram, and how vehicle reached garage"
+        title={isPreTheft ? 'Theft circumstances' : 'Damage & Transport'}
+        description={
+          isPreTheft
+            ? 'Circumstances of theft — vehicle not available for inspection'
+            : formTypes.includes('Re-inspection')
+              ? 'Post-repair observations (fresh notes — prior Assessment damage is in Remarks)'
+              : formTypes.includes('Supplementary')
+                ? 'Additional or missed damage / repairs'
+                : 'Damage summary, diagram, and how vehicle reached garage'
+        }
       >
         <div className="grid gap-6 lg:grid-cols-2">
-          <FormField label="Damage Summary" required error={errors.damage?.damageSummary?.message}>
+          <FormField
+            label={isPreTheft ? 'Theft circumstances / summary' : 'Damage Summary'}
+            required
+            error={errors.damage?.damageSummary?.message}
+          >
             <textarea
               {...register('damage.damageSummary')}
               readOnly={readOnly}
               rows={5}
               className="form-input resize-y"
+              placeholder={
+                isPreTheft
+                  ? 'When/where stolen, last known location, police OB number…'
+                  : formTypes.includes('Re-inspection')
+                    ? 'Post-repair condition and observations…'
+                    : formTypes.includes('Supplementary')
+                      ? 'Additional or missed damage items…'
+                      : undefined
+              }
             />
           </FormField>
-          <FormField label="Pre-Accident Defects">
-            <textarea
-              {...register('damage.preAccidentDefects')}
-              readOnly={readOnly}
-              rows={5}
-              className="form-input resize-y"
-            />
-          </FormField>
-        </div>
-
-        <div className="mt-6">
-          <Controller
-            name="damage.vehicleDiagram"
-            control={control}
-            render={({ field }) => (
-              <VehicleDiagram
-                marks={field.value}
-                onChange={field.onChange}
+          {!isPreTheft && (
+            <FormField label="Pre-Accident Defects">
+              <textarea
+                {...register('damage.preAccidentDefects')}
                 readOnly={readOnly}
+                rows={5}
+                className="form-input resize-y"
               />
-            )}
-          />
+            </FormField>
+          )}
         </div>
 
-        <FormField
-          label="How did vehicle reach garage?"
-          required
-          className="mt-6"
-          error={errors.damage?.garageArrival?.message}
-        >
-          <div className="flex flex-wrap gap-4">
-            {GARAGE_ARRIVAL_OPTIONS.filter((o) => o.value).map((option) => (
-              <label key={option.value} className="flex items-center gap-2 text-sm">
-                <input
-                  type="radio"
-                  value={option.value}
-                  {...register('damage.garageArrival')}
-                  disabled={readOnly}
-                  className="text-brand-600"
+        {!isPreTheft && (
+          <div className="mt-6">
+            <Controller
+              name="damage.vehicleDiagram"
+              control={control}
+              render={({ field }) => (
+                <VehicleDiagram
+                  marks={field.value}
+                  onChange={field.onChange}
+                  readOnly={readOnly}
                 />
-                {option.label}
-              </label>
-            ))}
+              )}
+            />
           </div>
-        </FormField>
+        )}
 
+        {!isPreTheft && (
+          <FormField
+            label="How did vehicle reach garage?"
+            required
+            className="mt-6"
+            error={errors.damage?.garageArrival?.message}
+          >
+            <div className="flex flex-wrap gap-4">
+              {GARAGE_ARRIVAL_OPTIONS.filter((o) => o.value).map((option) => (
+                <label key={option.value} className="flex items-center gap-2 text-sm">
+                  <input
+                    type="radio"
+                    value={option.value}
+                    {...register('damage.garageArrival')}
+                    disabled={readOnly}
+                    className="text-brand-600"
+                  />
+                  {option.label}
+                </label>
+              ))}
+            </div>
+          </FormField>
+        )}
+
+        {!isPreTheft && (
         <div className="mt-6 grid gap-4 lg:grid-cols-3">
           <FormField label="Parts to be Replaced">
             <textarea
@@ -576,6 +786,7 @@ export function DatasheetForm({
             />
           </FormField>
         </div>
+        )}
       </FormSection>
 
       <FormSection
@@ -624,7 +835,7 @@ export function DatasheetForm({
             />
             {user?.role === 'Assessor' && (
               <p className="mt-1 text-xs text-slate-500">
-                Set automatically from the logged-in Assessor
+                Set from your Assessor account when empty. As Seen By, you can set Done By on this task.
               </p>
             )}
           </FormField>

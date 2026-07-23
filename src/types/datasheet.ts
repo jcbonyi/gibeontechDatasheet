@@ -3,8 +3,10 @@ export type DatasheetStatus =
   | 'allocated'
   | 'in_progress'
   | 'awaiting_documents'
+  | 'submitted'
   | 'pending_review'
   | 'under_review'
+  | 'approved'
   | 'queried'
   | 'report_issued'
   | 'on_hold'
@@ -39,7 +41,8 @@ export type FormType =
   | 'Re-inspection'
   | 'Supplementary'
   | 'Technical'
-  | 'Inspection';
+  | 'Inspection'
+  | 'Pre-theft';
 
 export const FORM_TYPES: FormType[] = [
   'Assessment',
@@ -47,7 +50,17 @@ export const FORM_TYPES: FormType[] = [
   'Supplementary',
   'Technical',
   'Inspection',
+  'Pre-theft',
 ];
+
+export const FORM_TYPE_HINTS: Record<FormType, string> = {
+  Assessment: 'Full motor assessment after an accident or loss',
+  'Re-inspection': 'Post-repair observations — loads vehicle details from a prior Assessment',
+  Supplementary: 'Additional or missed items/repairs — loads context from a prior Assessment',
+  Technical: 'Technical / specialist investigation',
+  Inspection: 'Pre-purchase or general vehicle inspection',
+  'Pre-theft': 'Use only when the subject vehicle is stolen',
+};
 
 export type GarageArrival = 'Towed' | 'Driven' | 'Carried' | '';
 
@@ -343,6 +356,14 @@ export function isInspectionOnlyForm(formTypes: FormType[]): boolean {
 
 export function hasInspectionForm(formTypes: FormType[]): boolean {
   return formTypes.includes('Inspection');
+}
+
+export function hasPreTheftForm(formTypes: FormType[]): boolean {
+  return formTypes.includes('Pre-theft');
+}
+
+export function needsAssessmentPrefill(formTypes: FormType[]): boolean {
+  return formTypes.includes('Re-inspection') || formTypes.includes('Supplementary');
 }
 
 export function countReceivedDocuments(documents: Record<DocumentType, DocumentChecklistItem>): {

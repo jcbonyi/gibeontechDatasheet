@@ -33,7 +33,9 @@ export async function GET(
     }
     if (!canViewDatasheet(user, datasheet)) return forbidden();
 
-    const permissions = getDatasheetPermissions(user, datasheet);
+    const form = datasheet.form_data as { signOff?: { seenBy?: string } } | null;
+    const seenByName = form?.signOff?.seenBy || null;
+    const permissions = getDatasheetPermissions(user, { ...datasheet, seenByName });
     const audit = await getDatasheetAuditLog(datasheet.id);
     const users = await getActiveUsers();
     const userMap = new Map(users.map((u) => [u.id, u.name]));
@@ -43,6 +45,7 @@ export async function GET(
         ...datasheet,
         created_by_name: datasheet.created_by ? userMap.get(datasheet.created_by) || null : null,
         assigned_to_name: datasheet.assigned_to ? userMap.get(datasheet.assigned_to) || null : null,
+        done_by_name: datasheet.done_by ? userMap.get(datasheet.done_by) || null : null,
         reviewed_by_name: datasheet.reviewed_by
           ? userMap.get(datasheet.reviewed_by) || null
           : null,
@@ -74,8 +77,6 @@ export async function PATCH(
     let formData = (body.formData ?? datasheet.form_data) as Record<string, unknown>;
     let status = (body.status ?? datasheet.status) as DatasheetStatus;
     if ((status as string) === 'draft') status = 'instructed';
-    if ((status as string) === 'submitted') status = 'pending_review';
-    if ((status as string) === 'approved') status = 'report_issued';
 
     if ((status === 'report_issued' || status === 'closed') && user.role === 'OperationsManager') {
       return forbidden();

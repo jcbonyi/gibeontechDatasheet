@@ -2,6 +2,7 @@ import type { AuthUser } from '@/lib/auth';
 import type { DatasheetStatus, UserRole } from '@/types/datasheet';
 import {
   ASSESSOR_EDITABLE_STATUSES,
+  ASSESSOR_TARGET_STATUSES,
   getAvailableTransitions,
   isOpenStatus,
   isTerminalStatus,
@@ -28,20 +29,23 @@ export interface DatasheetRecord {
   id?: number;
   created_by: number | null;
   assigned_to: number | null;
+  done_by?: number | null;
   status: DatasheetStatus | string;
+  /** form_data.signOff.seenBy — used for Done By permission. */
+  seenByName?: string | null;
 }
 
 export function isSuperUser(role: UserRole): boolean {
   return role === 'Admin';
 }
 
-export function canViewAllDatasheets(role: UserRole): boolean {
-  return role !== 'Assessor';
+/** All authenticated roles can view the full datasheet register. */
+export function canViewAllDatasheets(_role: UserRole): boolean {
+  return true;
 }
 
-export function canViewDatasheet(user: AuthUser, ds: DatasheetRecord): boolean {
-  if (canViewAllDatasheets(user.role)) return true;
-  return ds.created_by === user.id || ds.assigned_to === user.id;
+export function canViewDatasheet(_user: AuthUser, _ds: DatasheetRecord): boolean {
+  return true;
 }
 
 export function canEditDatasheet(user: AuthUser, ds: DatasheetRecord): boolean {
@@ -56,8 +60,8 @@ export function canEditDatasheet(user: AuthUser, ds: DatasheetRecord): boolean {
   }
 
   if (user.role === 'Assessor') {
-    const involved = ds.created_by === user.id || ds.assigned_to === user.id;
-    return involved && ASSESSOR_EDITABLE_STATUSES.includes(status);
+    // Assessors may edit any visible open task in assessor-editable statuses.
+    return ASSESSOR_EDITABLE_STATUSES.includes(status);
   }
 
   return false;
@@ -69,6 +73,19 @@ export function canDeleteDatasheet(user: AuthUser): boolean {
 
 export function canAssignDatasheet(user: AuthUser): boolean {
   return user.role === 'Admin' || user.role === 'PrincipalOfficer' || user.role === 'OperationsManager';
+}
+
+/**
+ * Done By: Ops can always set it on open tasks.
+ * Assessors who are Seen By (or first to claim Seen By when empty) can set Done By.
+ */
+export function canSetDoneBy(user: AuthUser, ds: DatasheetRecord): boolean {
+  if (canAssignDatasheet(user)) return isSuperUser(user.role) || isOpenStatus(ds.status);
+  if (user.role !== 'Assessor') return false;
+  if (!isOpenStatus(ds.status) && normalizeStatus(ds.status) !== 'approved') return false;
+  const seen = String(ds.seenByName || '').trim().toLowerCase();
+  if (!seen) return true; // first Assessor to set Done By also becomes Seen By
+  return seen === user.name.trim().toLowerCase();
 }
 
 export function canManageUsers(user: AuthUser): boolean {
@@ -89,7 +106,7 @@ export function canIssueReport(user: AuthUser): boolean {
 
 /** @deprecated Use canIssueReport */
 export function canApproveDatasheet(user: AuthUser): boolean {
-  return canIssueReport(user);
+  return canIssueReport(user) || canReviewDatasheet(user);
 }
 
 export function canDuplicateDatasheet(user: AuthUser): boolean {
@@ -106,24 +123,28 @@ export function canTransitionStatus(
   if (!getAvailableTransitions(from).includes(to)) return false;
 
   if (to === 'report_issued' || to === 'closed') {
-    return canIssueReport(user) || (to === 'closed' && canReviewDatasheet(user) && from === 'report_issued');
+    return (
+      canIssueReport(user) ||
+      (to === 'closed' && canReviewDatasheet(user) && (from === 'report_issued' || from === 'approved'))
+    );
   }
   if (to === 'cancelled') {
     return canReviewDatasheet(user);
   }
-  if (to === 'under_review' || to === 'pending_review') {
-    if (user.role === 'Assessor' && to === 'pending_review') {
-      return canEditDatasheet(user, ds) || ASSESSOR_EDITABLE_STATUSES.includes(from);
+  if (to === 'approved') {
+    return canReviewDatasheet(user);
+  }
+  if (to === 'under_review') {
+    return canReviewDatasheet(user);
+  }
+  if (to === 'pending_review' || to === 'submitted') {
+    if (user.role === 'Assessor') {
+      return ASSESSOR_TARGET_STATUSES.includes(to);
     }
-    return canReviewDatasheet(user) || (user.role === 'Assessor' && to === 'pending_review');
+    return canReviewDatasheet(user) || canAssignDatasheet(user);
   }
   if (user.role === 'Assessor') {
-    const assessorAllowed: DatasheetStatus[] = [
-      'in_progress',
-      'awaiting_documents',
-      'pending_review',
-    ];
-    return assessorAllowed.includes(to) && (ds.created_by === user.id || ds.assigned_to === user.id);
+    return ASSESSOR_TARGET_STATUSES.includes(to);
   }
   return canReviewDatasheet(user) || canAssignDatasheet(user);
 }
@@ -136,7 +157,9 @@ export function getWorkflowActions(user: AuthUser, ds: DatasheetRecord): StatusA
   for (const status of next) {
     if (!canTransitionStatus(user, ds, status)) continue;
     let variant: StatusAction['variant'] = 'secondary';
-    if (status === 'report_issued' || status === 'pending_review') variant = 'primary';
+    if (status === 'report_issued' || status === 'pending_review' || status === 'submitted' || status === 'approved') {
+      variant = 'primary';
+    }
     if (status === 'cancelled') variant = 'danger';
     actions.push({
       status,
@@ -182,10 +205,17 @@ export function getDatasheetPermissions(user: AuthUser, ds: DatasheetRecord) {
     canDelete: canDeleteDatasheet(user),
     canAssign:
       canAssignDatasheet(user) && (isSuperUser(user.role) || isOpenStatus(status)),
-    canReopen: canReopenDatasheet(user) && (isTerminalStatus(status) || status === 'report_issued' || status === 'on_hold'),
-    canMarkUnderReview: canReviewDatasheet(user) && status === 'pending_review',
-    canApprove: canIssueReport(user) && (status === 'pending_review' || status === 'under_review'),
-    canIssueReport: canIssueReport(user) && (status === 'pending_review' || status === 'under_review'),
+    canSetDoneBy: canSetDoneBy(user, ds),
+    canReopen:
+      canReopenDatasheet(user) &&
+      (isTerminalStatus(status) || status === 'report_issued' || status === 'on_hold' || status === 'approved'),
+    canMarkUnderReview: canReviewDatasheet(user) && (status === 'pending_review' || status === 'submitted'),
+    canApprove:
+      canReviewDatasheet(user) &&
+      (status === 'pending_review' || status === 'under_review' || status === 'submitted'),
+    canIssueReport:
+      canIssueReport(user) &&
+      (status === 'pending_review' || status === 'under_review' || status === 'approved'),
     canDuplicate: canViewDatasheet(user, ds),
     workflowActions: getWorkflowActions(user, { ...ds, status }),
   };

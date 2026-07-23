@@ -63,7 +63,7 @@ export async function PATCH(
       patch.cancel_reason = cancelReason;
       patch.query_reason = reason || cancelReason;
     }
-    if (target === 'under_review' || target === 'report_issued') {
+    if (target === 'under_review' || target === 'approved' || target === 'report_issued') {
       if (canIssueReport(user) || user.role === 'OperationsManager') {
         patch.reviewed_by = user.id;
         patch.reviewed_at = new Date().toISOString();

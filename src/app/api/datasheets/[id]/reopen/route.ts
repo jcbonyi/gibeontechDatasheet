@@ -23,8 +23,13 @@ export async function POST(
     if (!canViewDatasheet(user, datasheet)) return forbidden();
 
     const status = normalizeStatus(datasheet.status);
-    if (!isTerminalStatus(status) && status !== 'on_hold' && status !== 'report_issued') {
-      return badRequest('Only issued, closed, cancelled, or on-hold files can be reopened');
+    if (
+      !isTerminalStatus(status) &&
+      status !== 'on_hold' &&
+      status !== 'report_issued' &&
+      status !== 'approved'
+    ) {
+      return badRequest('Only approved, issued, closed, cancelled, or on-hold files can be reopened');
     }
 
     const body = await req.json();

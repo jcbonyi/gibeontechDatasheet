@@ -46,6 +46,7 @@ export async function POST(
           assigned_to: null,
           assigned_by: null,
           assigned_at: null,
+          done_by: null,
           reopen_reason: null,
           date_of_instruction: source.date_of_instruction ?? null,
           client_insurer: source.client_insurer ?? null,

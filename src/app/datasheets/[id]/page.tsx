@@ -25,6 +25,7 @@ interface WorkflowAction {
 interface DatasheetPermissions {
   canEdit: boolean;
   canAssign: boolean;
+  canSetDoneBy: boolean;
   canReopen: boolean;
   canMarkUnderReview: boolean;
   canApprove: boolean;
@@ -51,6 +52,7 @@ export default function EditDatasheetPage() {
   const [serialNo, setSerialNo] = useState('');
   const [status, setStatus] = useState<DatasheetStatus>('instructed');
   const [assignedToName, setAssignedToName] = useState<string | null>(null);
+  const [doneByName, setDoneByName] = useState<string | null>(null);
   const [permissions, setPermissions] = useState<DatasheetPermissions | null>(null);
   const [audit, setAudit] = useState<AuditEntry[]>([]);
   const [delayNotes, setDelayNotes] = useState<DelayNote[]>([]);
@@ -59,6 +61,7 @@ export default function EditDatasheetPage() {
   const [actionMessage, setActionMessage] = useState('');
   const [assignees, setAssignees] = useState<{ id: number; name: string; role: UserRole; roleLabel?: string }[]>([]);
   const [assignTo, setAssignTo] = useState('');
+  const [doneBy, setDoneBy] = useState('');
 
   const canDelete = user ? canDeleteDatasheet(user) : false;
   const canAssign = user ? canAssignDatasheet(user) : false;
@@ -71,6 +74,7 @@ export default function EditDatasheetPage() {
         serial_no: string;
         status: DatasheetStatus;
         assigned_to_name?: string | null;
+        done_by_name?: string | null;
         delay_notes?: unknown;
       };
       permissions: DatasheetPermissions;
@@ -79,13 +83,14 @@ export default function EditDatasheetPage() {
       .then(({ ok, data }) => {
         if (!ok) throw new Error(data.message || 'Failed to load');
         const loaded = mergeFormData(data.datasheet.form_data as DatasheetFormData);
-        if (user?.role === 'Assessor' && user.name) {
+        if (user?.role === 'Assessor' && user.name && !loaded.signOff.seenBy?.trim()) {
           loaded.signOff.seenBy = user.name;
         }
         setFormData(loaded);
         setSerialNo(data.datasheet.serial_no);
         setStatus(data.datasheet.status);
         setAssignedToName(data.datasheet.assigned_to_name || null);
+        setDoneByName(data.datasheet.done_by_name || null);
         setPermissions(data.permissions);
         setAudit(data.audit || []);
         setDelayNotes(normalizeDelayNotes(data.datasheet.delay_notes));
@@ -99,11 +104,11 @@ export default function EditDatasheetPage() {
   }, [id, user?.name]);
 
   useEffect(() => {
-    if (!canAssign) return;
+    if (!canAssign && !permissions?.canSetDoneBy) return;
     fetch('/api/users/assessors')
       .then((r) => r.json())
       .then((d) => setAssignees(d.assessors || []));
-  }, [canAssign]);
+  }, [canAssign, permissions?.canSetDoneBy]);
 
   const handleSave = async (data: DatasheetFormData, newStatus: DatasheetStatus) => {
     const { ok, data: result } = await fetchJson<{
@@ -169,6 +174,11 @@ export default function EditDatasheetPage() {
               {assignedToName && (
                 <span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-medium text-slate-600">
                   Allocated to {assignedToName}
+                </span>
+              )}
+              {doneByName && (
+                <span className="rounded-full bg-brand-50 px-2.5 py-0.5 text-xs font-medium text-brand-800">
+                  Done by {doneByName}
                 </span>
               )}
             </div>
@@ -263,6 +273,40 @@ export default function EditDatasheetPage() {
                 Duplicate task
               </button>
             )}
+            {permissions?.canDuplicate && (
+              <>
+                {(
+                  [
+                    ['Re-inspection', 'New Re-inspection'],
+                    ['Supplementary', 'New Supplementary'],
+                    ['Pre-theft', 'New Pre-theft'],
+                  ] as const
+                ).map(([formType, label]) => (
+                  <button
+                    key={formType}
+                    type="button"
+                    className="btn-secondary"
+                    title={
+                      formType === 'Pre-theft'
+                        ? 'Create a Pre-theft file (stolen vehicle) using claim/vehicle details from this task'
+                        : `Create a ${formType} populated from this Assessment’s vehicle & claim details`
+                    }
+                    onClick={async () => {
+                      const res = await fetch(`/api/datasheets/${id}/derive`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ formType }),
+                      });
+                      const data = await res.json();
+                      if (res.ok) router.push(`/datasheets/${data.datasheet.id}`);
+                      else setActionMessage(data.message || `Failed to create ${formType}`);
+                    }}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </>
+            )}
             {(permissions?.canAssign || canAssign) && (
               <div className="flex flex-wrap items-center gap-2">
                 <select
@@ -302,6 +346,45 @@ export default function EditDatasheetPage() {
                 </button>
               </div>
             )}
+            {permissions?.canSetDoneBy && (
+              <div className="flex flex-wrap items-center gap-2">
+                <select
+                  value={doneBy}
+                  onChange={(e) => setDoneBy(e.target.value)}
+                  className="form-input py-2 text-sm"
+                >
+                  <option value="">Set Done By…</option>
+                  {assignees.map((a) => (
+                    <option key={a.id} value={a.id}>
+                      {a.name} · {a.roleLabel || ROLE_LABELS[a.role]}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  className="btn-secondary"
+                  disabled={!doneBy}
+                  onClick={async () => {
+                    const res = await fetch(`/api/datasheets/${id}/done-by`, {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ doneBy: Number(doneBy) }),
+                    });
+                    const data = await res.json();
+                    if (!res.ok) {
+                      setActionMessage(data.message || 'Failed to set Done By');
+                      return;
+                    }
+                    setActionMessage('Done By updated');
+                    setDoneBy('');
+                    reload();
+                  }}
+                >
+                  <UserPlus className="h-4 w-4" />
+                  Set Done By
+                </button>
+              </div>
+            )}
             {(permissions?.canDelete || canDelete) && (
               <button
                 type="button"
@@ -331,7 +414,8 @@ export default function EditDatasheetPage() {
               !permissions?.canReopen &&
               !permissions?.canDuplicate &&
               !permissions?.canDelete &&
-              !permissions?.canAssign && (
+              !permissions?.canAssign &&
+              !permissions?.canSetDoneBy && (
               <p className="text-sm text-slate-500">No workflow actions available for your role at this stage.</p>
             )}
           </div>

@@ -103,6 +103,7 @@ const baseDatasheetSchema = z.object({
 
 export const datasheetFormSchema = baseDatasheetSchema.superRefine((data, ctx) => {
   const hasInspection = data.header.formTypes.includes('Inspection');
+  const hasPreTheft = data.header.formTypes.includes('Pre-theft');
 
   if (hasInspection) {
     const result = inspectionFormSchema.safeParse(data.inspection);
@@ -135,11 +136,14 @@ export const datasheetFormSchema = baseDatasheetSchema.superRefine((data, ctx) =
   if (!data.damage.damageSummary.trim()) {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
-      message: 'Damage summary is required',
+      message: hasPreTheft
+        ? 'Theft circumstances / summary is required'
+        : 'Damage summary is required',
       path: ['damage', 'damageSummary'],
     });
   }
-  if (!data.damage.garageArrival) {
+  // Garage arrival does not apply when the vehicle is stolen
+  if (!hasPreTheft && !data.damage.garageArrival) {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
       message: 'Select how the vehicle reached the garage',

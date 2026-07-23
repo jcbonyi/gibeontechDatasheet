@@ -9,7 +9,8 @@ export async function GET(req: NextRequest) {
   try {
     const user = await getAuthUser(req);
     if (!user) return unauthorized();
-    if (!canAssignDatasheet(user)) {
+    // Ops allocate + Assessors setting Done By both need the assignee list
+    if (!canAssignDatasheet(user) && user.role !== 'Assessor') {
       return NextResponse.json({ assessors: [] });
     }
 
