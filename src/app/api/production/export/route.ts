@@ -7,8 +7,8 @@ import { buildProductionSummary } from '@/lib/productionAnalytics';
 import {
   buildProductionExcel,
   buildProductionPdf,
-  formatDisplayDate,
 } from '@/lib/productionExport';
+import { formatDisplayDate } from '@/lib/productionConfig';
 
 export async function GET(req: NextRequest) {
   try {

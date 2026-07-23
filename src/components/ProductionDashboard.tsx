@@ -8,8 +8,7 @@ import {
   RefreshCw,
   Trophy,
 } from 'lucide-react';
-import { formatMoney } from '@/lib/productionConfig';
-import { formatDisplayDate } from '@/lib/productionExport';
+import { formatMoney, formatDisplayDate } from '@/lib/productionConfig';
 import { SimpleBarChart, SimpleHorizontalBars, SimpleLineChart } from '@/components/SimpleCharts';
 import { NotificationBell } from '@/components/NotificationBell';
 import {

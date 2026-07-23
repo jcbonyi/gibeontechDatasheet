@@ -6,32 +6,7 @@ import autoTable from 'jspdf-autotable';
 import { BRAND_COLORS, COMPANY } from '@/constants/brand';
 import type { DbProductionEntry } from '@/lib/productionDb';
 import type { ProductionSummary } from '@/lib/productionAnalytics';
-import { formatMoney } from '@/lib/productionConfig';
-
-const MONTHS = [
-  'Jan',
-  'Feb',
-  'Mar',
-  'Apr',
-  'May',
-  'Jun',
-  'Jul',
-  'Aug',
-  'Sep',
-  'Oct',
-  'Nov',
-  'Dec',
-] as const;
-
-/** Display dates as dd-mmm-yyyy (e.g. 23-Jul-2026). */
-export function formatDisplayDate(value: string | null | undefined): string {
-  const s = String(value || '').slice(0, 10);
-  const m = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  if (!m) return s || '—';
-  const month = MONTHS[Number(m[2]) - 1];
-  if (!month) return s;
-  return `${m[3]}-${month}-${m[1]}`;
-}
+import { formatDisplayDate, formatMoney } from '@/lib/productionConfig';
 
 function hexToRgb(hex: string): { r: number; g: number; b: number } {
   const h = hex.replace('#', '');

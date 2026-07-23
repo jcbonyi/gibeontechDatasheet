@@ -72,3 +72,28 @@ export function formatMoney(value: number): string {
     maximumFractionDigits: 2,
   });
 }
+
+const DISPLAY_MONTHS = [
+  'Jan',
+  'Feb',
+  'Mar',
+  'Apr',
+  'May',
+  'Jun',
+  'Jul',
+  'Aug',
+  'Sep',
+  'Oct',
+  'Nov',
+  'Dec',
+] as const;
+
+/** Display dates as dd-mmm-yyyy (e.g. 23-Jul-2026). Safe for client + server. */
+export function formatDisplayDate(value: string | null | undefined): string {
+  const s = String(value || '').slice(0, 10);
+  const m = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) return s || '—';
+  const month = DISPLAY_MONTHS[Number(m[2]) - 1];
+  if (!month) return s;
+  return `${m[3]}-${month}-${m[1]}`;
+}
