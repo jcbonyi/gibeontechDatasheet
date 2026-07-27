@@ -314,6 +314,12 @@ export async function buildProductionExcel(
     ['Avg per job', summary.kpis.avgPerJob ?? '—'],
     ['Avg per user', summary.kpis.avgPerUser ?? '—'],
     ['Top staff', summary.kpis.topStaff || '—'],
+    [
+      'Top staff (this month)',
+      summary.kpis.topStaffMonthAmount != null
+        ? formatMoney(summary.kpis.topStaffMonthAmount)
+        : '—',
+    ],
     ['Top insurer', summary.kpis.topInsurer || '—'],
   ];
   kpiRows.forEach(([label, value], idx) => {
@@ -430,7 +436,13 @@ export function buildProductionPdf(
       label: 'VAT Amount',
       value: formatMoney(vatAmount(summary.kpis.totalAmount, summary.kpis.totalWithoutVat)),
     },
-    { label: 'Top staff', value: summary.kpis.topStaff || '—' },
+    {
+      label: 'Top staff',
+      value:
+        summary.kpis.topStaffMonthAmount != null && summary.kpis.topStaff
+          ? `${summary.kpis.topStaff} (${formatMoney(summary.kpis.topStaffMonthAmount)})`
+          : summary.kpis.topStaff || '—',
+    },
   ];
   const chipW = (pageW - margin * 2 - 8) / chips.length;
   chips.forEach((chip, i) => {

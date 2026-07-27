@@ -70,6 +70,8 @@ export interface ProductionSummary {
     avgPerUser: number | null;
     topStaff: string | null;
     topStaffUserId: number | null;
+    /** This month's production value for top staff (amount, not job count). */
+    topStaffMonthAmount: number | null;
     topInsurer: string | null;
     topInsurerId: number | null;
   };
@@ -174,33 +176,43 @@ export function buildProductionSummary(
         }
       : undefined;
 
-  // Rank "Top staff" by total production value (amount), not by number of jobs.
-  const staffTotals = new Map<
-    number | null,
+  // Top staff = highest individual production VALUE this month (not job count / all-time).
+  const staffMonthTotals = new Map<
+    string,
     { userId: number | null; name: string; jobs: number; amount: number }
   >();
-  for (const r of active) {
-    const userId = r.done_by_user_id ?? null;
-    const name = r.done_by_name || 'Unassigned';
-    const cur = staffTotals.get(userId) || { userId, name, jobs: 0, amount: 0 };
+  for (const r of monthRows) {
+    const name = (r.done_by_name || 'Unassigned').trim() || 'Unassigned';
+    const key =
+      r.done_by_user_id != null ? `id:${r.done_by_user_id}` : `name:${name.toLowerCase()}`;
+    const cur = staffMonthTotals.get(key) || {
+      userId: r.done_by_user_id ?? null,
+      name,
+      jobs: 0,
+      amount: 0,
+    };
     cur.jobs += 1;
     cur.amount += Number(r.amount) || 0;
-    // Prefer a concrete staff name when it exists.
     if (cur.name === 'Unassigned' && name !== 'Unassigned') cur.name = name;
-    staffTotals.set(userId, cur);
+    staffMonthTotals.set(key, cur);
   }
-  const topStaff = [...staffTotals.values()].sort(
-    (a, b) => b.amount - a.amount || b.jobs - a.jobs,
-  )[0];
+  const topStaff = [...staffMonthTotals.values()]
+    .filter((s) => s.name !== 'Unassigned')
+    .sort((a, b) => b.amount - a.amount || b.jobs - a.jobs)[0];
 
   const topStaffName = topStaff?.name || null;
-  const topStaffUserId =
-    topStaffName && topStaffName !== 'Unassigned' ? topStaff?.userId ?? null : null;
+  const topStaffUserId = topStaff?.userId ?? null;
+  const topStaffMonthAmount = topStaff
+    ? Math.round(topStaff.amount * 100) / 100
+    : null;
   const topInsurerName = byInsurer[0]?.name || null;
   const topInsurerId =
     topInsurerName && topInsurerName !== 'Unknown'
       ? active.find((r) => (r.insurer_name || 'Unknown') === topInsurerName)?.insurer_id ?? null
       : null;
+
+  // Staff leaderboard for the current month, ranked by production value.
+  const monthByDoneBy = groupCountAmount(monthRows, (r) => r.done_by_name || 'Unassigned');
 
   return {
     kpis: {
@@ -222,6 +234,7 @@ export function buildProductionSummary(
       avgPerUser: uniqueStaff ? Math.round((sum(amounts) / uniqueStaff) * 100) / 100 : null,
       topStaff: topStaffName,
       topStaffUserId,
+      topStaffMonthAmount,
       topInsurer: topInsurerName,
       topInsurerId,
     },
@@ -238,7 +251,7 @@ export function buildProductionSummary(
     byDoneBy,
     bySeenBy: groupCountAmount(active, (r) => r.seen_by_name || 'Unassigned'),
     byInstructedBy: groupCountAmount(active, (r) => r.instructed_by_name || 'Unassigned'),
-    staffLeaderboard: byDoneBy.slice(0, 10).map((s) => ({
+    staffLeaderboard: monthByDoneBy.slice(0, 10).map((s) => ({
       name: s.name,
       jobs: s.jobs,
       amount: s.amount,

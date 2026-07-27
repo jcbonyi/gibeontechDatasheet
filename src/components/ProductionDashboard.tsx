@@ -220,10 +220,14 @@ export function ProductionDashboard() {
             <Link
               href={
                 k?.topStaffUserId
-                  ? registerHref({ doneBy: k.topStaffUserId })
+                  ? registerHref({
+                      doneBy: k.topStaffUserId,
+                      fromDate: monthFrom,
+                      toDate: today,
+                    })
                   : k?.topStaff
-                    ? registerHref({ q: k.topStaff })
-                    : '/production/entries'
+                    ? registerHref({ q: k.topStaff, fromDate: monthFrom, toDate: today })
+                    : registerHref({ fromDate: monthFrom, toDate: today })
               }
               className="section-card group block !p-4 transition hover:border-brand-300 hover:shadow-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-400"
             >
@@ -234,8 +238,13 @@ export function ProductionDashboard() {
               <p className="mt-1 text-lg font-bold text-slate-900 group-hover:text-brand-700">
                 {k?.topStaff || '—'}
               </p>
+              <p className="text-sm text-slate-600">
+                {k?.topStaffMonthAmount != null
+                  ? `${formatMoney(k.topStaffMonthAmount)} this month`
+                  : 'No production this month'}
+              </p>
               <p className="mt-2 text-xs font-medium text-brand-600 opacity-0 transition group-hover:opacity-100">
-                View their jobs →
+                View this month →
               </p>
             </Link>
             <Link
