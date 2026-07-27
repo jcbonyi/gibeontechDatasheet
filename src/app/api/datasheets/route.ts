@@ -13,11 +13,15 @@ import { canViewAllDatasheets } from '@/lib/permissions';
 import { createDefaultFormData, type DatasheetStatus } from '@/types/datasheet';
 import { toListItem } from '@/lib/tracking';
 import { extractDenormalizedFields } from '@/lib/extractFields';
+import { ensureReviewTasksAssignedToFrancis } from '@/lib/reviewAssignee';
 
 export async function GET(req: NextRequest) {
   try {
     const user = await getAuthUser(req);
     if (!user) return unauthorized();
+
+    // Keep Pending Review / Under Review tasks allocated to Francis
+    await ensureReviewTasksAssignedToFrancis();
 
     const { searchParams } = new URL(req.url);
     const datasheets = await listDatasheets({

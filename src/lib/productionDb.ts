@@ -4,7 +4,7 @@ import path from 'path';
 import { hashPassword } from '@/lib/auth';
 import { createUserRecord, ensureDb, isJsonMode, isSupabaseMode, query } from '@/lib/db';
 import { getSupabaseAdmin } from '@/lib/supabase';
-import { normalizeAssignment, normalizePaidStatus, VAT_RATE, type PaidStatus, type ProductionStatus } from '@/lib/productionConfig';
+import { normalizeAssignment, normalizePaidStatus, VAT_RATE, type PaidStatus, type ProductionStatus, resolveIntraAccountRemarks } from '@/lib/productionConfig';
 
 export interface DbInsurer {
   id: number;
@@ -729,6 +729,11 @@ export async function createProductionEntry(
   const insured = textOrNull(input.insured);
   const claim_policy_number = textOrNull(input.claim_policy_number);
   const paid_status = normalizePaidStatus(input.paid_status);
+  const insurers = await listInsurers(false);
+  const insurerName =
+    insurers.find((i) => i.id === input.insurer_id)?.name || null;
+  const intraRemarks = resolveIntraAccountRemarks(insurerName, claim_policy_number);
+  const remarks = intraRemarks ?? (input.remarks?.trim() || null);
 
   if (isJsonMode()) {
     const s = getStore();
@@ -750,7 +755,7 @@ export async function createProductionEntry(
       insured,
       claim_policy_number,
       paid_status,
-      remarks: input.remarks?.trim() || null,
+      remarks,
       status,
       created_by: userId,
       updated_by: userId,
@@ -783,7 +788,7 @@ export async function createProductionEntry(
         insured,
         claim_policy_number,
         paid_status,
-        remarks: input.remarks?.trim() || null,
+        remarks,
         status,
         created_by: userId,
         updated_by: userId,
@@ -816,7 +821,7 @@ export async function createProductionEntry(
       insured,
       claim_policy_number,
       paid_status,
-      input.remarks?.trim() || null,
+      remarks,
       status,
       userId,
       userId,
@@ -842,6 +847,11 @@ export async function updateProductionEntry(
   const claim_policy_number = textOrNull(input.claim_policy_number);
   const paid_status = normalizePaidStatus(input.paid_status);
   const now = new Date().toISOString();
+  const insurers = await listInsurers(false);
+  const insurerName =
+    insurers.find((i) => i.id === input.insurer_id)?.name || null;
+  const intraRemarks = resolveIntraAccountRemarks(insurerName, claim_policy_number);
+  const remarks = intraRemarks ?? (input.remarks?.trim() || null);
 
   if (isJsonMode()) {
     const s = getStore();
@@ -863,7 +873,7 @@ export async function updateProductionEntry(
       insured,
       claim_policy_number,
       paid_status,
-      remarks: input.remarks?.trim() || null,
+      remarks,
       status,
       updated_by: userId,
       updated_at: now,
@@ -892,7 +902,7 @@ export async function updateProductionEntry(
         insured,
         claim_policy_number,
         paid_status,
-        remarks: input.remarks?.trim() || null,
+        remarks,
         status,
         updated_by: userId,
         updated_at: now,
@@ -924,7 +934,7 @@ export async function updateProductionEntry(
       insured,
       claim_policy_number,
       paid_status,
-      input.remarks?.trim() || null,
+      remarks,
       status,
       userId,
       id,

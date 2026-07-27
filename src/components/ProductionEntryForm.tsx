@@ -11,6 +11,7 @@ import {
   PRODUCTION_STATUS_LABELS,
   PRODUCTION_STATUSES,
   vatAmount,
+  resolveIntraAccountRemarks,
   type AssignmentType,
   type PaidStatus,
   type ProductionStatus,
@@ -118,6 +119,11 @@ export function ProductionEntryForm({
       if (match) setSeenBy(match.name);
     }
   }, [users, initial?.seen_by_user_id, seenBy]);
+
+  useEffect(() => {
+    const auto = resolveIntraAccountRemarks(insurerName, claimPolicyNumber);
+    if (auto) setRemarks(auto);
+  }, [insurerName, claimPolicyNumber]);
 
   const vatDisplay = useMemo(() => {
     const gross = Number(amount);

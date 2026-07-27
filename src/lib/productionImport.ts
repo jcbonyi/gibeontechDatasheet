@@ -1,5 +1,5 @@
 import ExcelJS from 'exceljs';
-import { normalizeAssignment, normalizePaidStatus, type PaidStatus } from '@/lib/productionConfig';
+import { normalizeAssignment, normalizePaidStatus, resolveIntraAccountRemarks, type PaidStatus } from '@/lib/productionConfig';
 import type { ProductionEntryInput } from '@/lib/productionDb';
 
 export interface ParsedProductionRow {
@@ -498,7 +498,7 @@ export function toEntryInput(
     insured: row.insured,
     claim_policy_number: row.claim_policy_number,
     paid_status: row.paid_status,
-    remarks: null,
+    remarks: resolveIntraAccountRemarks(row.insurer_name, row.claim_policy_number),
     status: 'completed',
   };
 }

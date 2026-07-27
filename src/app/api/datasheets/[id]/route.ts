@@ -17,6 +17,7 @@ import {
 } from '@/lib/permissions';
 import type { DatasheetStatus } from '@/types/datasheet';
 import { extractDenormalizedFields } from '@/lib/extractFields';
+import { assignToFrancisIfReview } from '@/lib/reviewAssignee';
 
 export async function GET(
   req: NextRequest,
@@ -97,12 +98,14 @@ export async function PATCH(
       search_text: denorm.search_text,
     });
 
+    await assignToFrancisIfReview(Number(id), status, user.id);
+
     await logDatasheetAudit(datasheet.id, user.id, user.name, 'updated', {
       status,
       previousStatus: datasheet.status,
     });
 
-    return NextResponse.json({ datasheet: updated });
+    return NextResponse.json({ datasheet: (await getDatasheetById(Number(id))) || updated });
   } catch (err) {
     return handleRouteError(err, 'PATCH /api/datasheets/[id]');
   }

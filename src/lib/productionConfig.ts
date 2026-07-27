@@ -134,3 +134,34 @@ export function formatDisplayDate(value: string | null | undefined): string {
   if (!month) return s;
   return `${m[3]}-${month}-${m[1]}`;
 }
+
+/**
+ * Intra insurer + IA/01 → "Intra Account 1"; IA/02 → "Intra Account 2".
+ * Returns null when the rule does not apply (caller keeps existing remarks).
+ */
+export function resolveIntraAccountRemarks(
+  insurerName: string | null | undefined,
+  claimPolicyNumber: string | null | undefined,
+): string | null {
+  const insurer = String(insurerName || '')
+    .replace(/\u00a0/g, ' ')
+    .trim()
+    .toLowerCase();
+  if (!insurer) return null;
+  const isIntra =
+    insurer === 'intra' ||
+    insurer.startsWith('intra ') ||
+    insurer.endsWith(' intra') ||
+    insurer.includes(' intra ') ||
+    /^intra[\s\-_/]/i.test(insurer);
+  if (!isIntra) return null;
+
+  const claim = String(claimPolicyNumber || '')
+    .replace(/\u00a0/g, ' ')
+    .toUpperCase()
+    .replace(/\s+/g, '');
+  if (!claim) return null;
+  if (claim.includes('IA/01') || claim.includes('IA01')) return 'Intra Account 1';
+  if (claim.includes('IA/02') || claim.includes('IA02')) return 'Intra Account 2';
+  return null;
+}

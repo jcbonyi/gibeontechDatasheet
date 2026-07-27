@@ -7,6 +7,7 @@ import { canIssueReport, canTransitionStatus } from '@/lib/permissions';
 import { DATASHEET_STATUSES, normalizeStatus, STATUS_LABELS } from '@/lib/status';
 import type { DatasheetStatus } from '@/types/datasheet';
 import { CANCEL_REASONS } from '@/lib/opsConfig';
+import { assignToFrancisIfReview } from '@/lib/reviewAssignee';
 
 export async function PATCH(
   req: NextRequest,
@@ -75,15 +76,18 @@ export async function PATCH(
 
     const updated = await updateDatasheetRecord(Number(id), patch);
 
+    const francisId = await assignToFrancisIfReview(Number(id), target, user.id);
+
     await logDatasheetAudit(datasheet.id, user.id, user.name, 'status_changed', {
       from: datasheet.status,
       to: target,
       label: STATUS_LABELS[target],
       reason: reason || undefined,
       cancelReason: cancelReason || undefined,
+      assignedToFrancis: francisId || undefined,
     });
 
-    return NextResponse.json({ datasheet: updated });
+    return NextResponse.json({ datasheet: (await getDatasheetById(Number(id))) || updated });
   } catch (err) {
     return handleRouteError(err, 'PATCH /api/datasheets/[id]/review');
   }
