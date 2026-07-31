@@ -461,6 +461,65 @@ export function ProductionDashboard() {
                   />
                 </div>
               </div>
+
+              <div className="mb-6 grid gap-6 lg:grid-cols-2">
+                <div className="section-card">
+                  <h2 className="mb-4 text-sm font-semibold text-brand-800">
+                    Production by Assignment · {periodLabel}
+                  </h2>
+                  <SimpleHorizontalBars
+                    items={chartSummary.byAssignment.slice(0, 12).map((i) => ({
+                      label: `${i.name} (${i.jobs} · ${formatMoney(i.amount)})`,
+                      value: i.jobs,
+                    }))}
+                  />
+                  <p className="mt-2 text-xs text-slate-500">Jobs by assignment type</p>
+                </div>
+                <div className="section-card">
+                  <h2 className="mb-4 text-sm font-semibold text-brand-800">
+                    Assignment value · {periodLabel}
+                  </h2>
+                  <SimpleBarChart
+                    hideEmpty
+                    items={chartSummary.byAssignment.slice(0, 8).map((i) => ({
+                      label: i.name.length > 14 ? `${i.name.slice(0, 12)}…` : i.name,
+                      value: Math.round(i.amount),
+                    }))}
+                  />
+                  <p className="mt-2 text-xs text-slate-500">Amount (incl. VAT) by assignment type</p>
+                </div>
+              </div>
+
+              <div className="mb-6 grid gap-6 lg:grid-cols-2">
+                <div className="section-card">
+                  <h2 className="mb-4 text-sm font-semibold text-brand-800">
+                    Assignments by Done By · {periodLabel}
+                  </h2>
+                  <SimpleHorizontalBars
+                    items={chartSummary.byDoneByAssignment.slice(0, 12).map((i) => ({
+                      label: `${i.name} (${formatMoney(i.amount)})`,
+                      value: i.jobs,
+                    }))}
+                  />
+                  <p className="mt-2 text-xs text-slate-500">
+                    User · assignment type (jobs completed)
+                  </p>
+                </div>
+                <div className="section-card">
+                  <h2 className="mb-4 text-sm font-semibold text-brand-800">
+                    Assignments by Seen By · {periodLabel}
+                  </h2>
+                  <SimpleHorizontalBars
+                    items={chartSummary.bySeenByAssignment.slice(0, 12).map((i) => ({
+                      label: `${i.name} (${formatMoney(i.amount)})`,
+                      value: i.jobs,
+                    }))}
+                  />
+                  <p className="mt-2 text-xs text-slate-500">
+                    User · assignment type (jobs reviewed)
+                  </p>
+                </div>
+              </div>
             </>
           )}
 

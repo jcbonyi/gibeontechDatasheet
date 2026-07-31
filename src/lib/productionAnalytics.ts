@@ -86,9 +86,14 @@ export interface ProductionSummary {
   weeklyTrend: { week: string; jobs: number; amount: number }[];
   monthlyTrend: { month: string; jobs: number; amount: number }[];
   byInsurer: { name: string; jobs: number; amount: number; withoutVat: number }[];
+  byAssignment: { name: string; jobs: number; amount: number; withoutVat: number }[];
   byDoneBy: { name: string; jobs: number; amount: number; withoutVat: number }[];
   bySeenBy: { name: string; jobs: number; amount: number; withoutVat: number }[];
   byInstructedBy: { name: string; jobs: number; amount: number; withoutVat: number }[];
+  /** Done By × Assignment (e.g. "MJOMBA · Assessment"). */
+  byDoneByAssignment: { name: string; jobs: number; amount: number; withoutVat: number }[];
+  /** Seen By × Assignment (e.g. "FRANCIS · Assessment"). */
+  bySeenByAssignment: { name: string; jobs: number; amount: number; withoutVat: number }[];
   staffLeaderboard: {
     name: string;
     jobs: number;
@@ -129,6 +134,17 @@ export function buildProductionSummary(
 
   const byDoneBy = groupCountAmount(active, (r) => r.done_by_name || 'Unassigned');
   const byInsurer = groupCountAmount(active, (r) => r.insurer_name || 'Unknown');
+  const byAssignment = groupCountAmount(active, (r) => r.assignment?.trim() || 'Unspecified');
+  const byDoneByAssignment = groupCountAmount(active, (r) => {
+    const who = (r.done_by_name || 'Unassigned').trim() || 'Unassigned';
+    const assignment = r.assignment?.trim() || 'Unspecified';
+    return `${who} · ${assignment}`;
+  });
+  const bySeenByAssignment = groupCountAmount(active, (r) => {
+    const who = (r.seen_by_name || 'Unassigned').trim() || 'Unassigned';
+    const assignment = r.assignment?.trim() || 'Unspecified';
+    return `${who} · ${assignment}`;
+  });
 
   const dayMap = new Map<string, { jobs: number; amount: number }>();
   const weekMap = new Map<string, { jobs: number; amount: number }>();
@@ -239,9 +255,12 @@ export function buildProductionSummary(
       .sort(([a], [b]) => a.localeCompare(b))
       .map(([month, v]) => ({ month, jobs: v.jobs, amount: Math.round(v.amount * 100) / 100 })),
     byInsurer,
+    byAssignment,
     byDoneBy,
     bySeenBy: groupCountAmount(active, (r) => r.seen_by_name || 'Unassigned'),
     byInstructedBy: groupCountAmount(active, (r) => r.instructed_by_name || 'Unassigned'),
+    byDoneByAssignment,
+    bySeenByAssignment,
     staffLeaderboard: monthByDoneBy.slice(0, 10).map((s) => ({
       name: s.name,
       jobs: s.jobs,
