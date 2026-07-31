@@ -58,19 +58,34 @@ export function SimpleBarChart({
   );
 }
 
-export function SimpleHorizontalBars({ items }: { items: BarItem[] }) {
+export function SimpleHorizontalBars({
+  items,
+  formatValue,
+  maxHeight,
+}: {
+  items: BarItem[];
+  /** Display formatter for the numeric value (bar width still uses raw value). */
+  formatValue?: (value: number) => string;
+  /** Scroll when the list is long (e.g. full person lists). */
+  maxHeight?: number;
+}) {
   const max = Math.max(...items.map((i) => i.value), 1);
+  const fmt = formatValue || ((v: number) => String(v));
 
-  return (
+  const body = (
     <div className="space-y-2.5">
       {items.map((item, idx) => {
         const pct = (item.value / max) * 100;
         const color = item.color || DEFAULT_COLORS[idx % DEFAULT_COLORS.length];
         return (
-          <div key={item.label}>
+          <div key={`${item.label}-${idx}`}>
             <div className="mb-1 flex items-center justify-between gap-2 text-xs">
-              <span className="truncate font-medium text-slate-700">{item.label}</span>
-              <span className="shrink-0 font-semibold tabular-nums text-slate-800">{item.value}</span>
+              <span className="truncate font-medium text-slate-700" title={item.label}>
+                {item.label}
+              </span>
+              <span className="shrink-0 font-semibold tabular-nums text-slate-800">
+                {fmt(item.value)}
+              </span>
             </div>
             <div className="h-2 overflow-hidden rounded-full bg-slate-100">
               <div
@@ -86,14 +101,28 @@ export function SimpleHorizontalBars({ items }: { items: BarItem[] }) {
       )}
     </div>
   );
+
+  if (maxHeight != null && items.length > 0) {
+    return (
+      <div className="overflow-y-auto pr-1" style={{ maxHeight }}>
+        {body}
+      </div>
+    );
+  }
+
+  return body;
 }
 
 export function SimpleLineChart({
   points,
   height = 160,
+  legendA = 'Created',
+  legendB = 'Reports issued',
 }: {
   points: { label: string; a: number; b: number }[];
   height?: number;
+  legendA?: string;
+  legendB?: string;
 }) {
   if (!points.length) {
     return <p className="py-8 text-center text-sm text-slate-500">No volume data yet.</p>;
@@ -127,16 +156,16 @@ export function SimpleLineChart({
       <div className="mt-1 flex justify-between gap-1 text-[10px] text-slate-500">
         {points.map((p) => (
           <span key={p.label} className="truncate text-center" style={{ width: `${100 / points.length}%` }}>
-            {p.label.slice(5)}
+            {p.label.includes('/') ? p.label : p.label.slice(5) || p.label}
           </span>
         ))}
       </div>
       <div className="mt-2 flex gap-4 text-xs text-slate-600">
         <span className="inline-flex items-center gap-1.5">
-          <span className="h-2 w-2 rounded-full bg-brand-700" /> Created
+          <span className="h-2 w-2 rounded-full bg-brand-700" /> {legendA}
         </span>
         <span className="inline-flex items-center gap-1.5">
-          <span className="h-2 w-2 rounded-full bg-accent-600" /> Reports issued
+          <span className="h-2 w-2 rounded-full bg-accent-600" /> {legendB}
         </span>
       </div>
     </div>
