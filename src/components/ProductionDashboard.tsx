@@ -25,14 +25,6 @@ import {
   type ProductionSummary,
 } from '@/lib/productionAnalytics';
 
-type ChartTab = 'trends' | 'people' | 'assignments';
-
-const CHART_TABS: { key: ChartTab; label: string; icon: typeof TrendingUp }[] = [
-  { key: 'trends', label: 'Trends', icon: TrendingUp },
-  { key: 'people', label: 'People', icon: Users },
-  { key: 'assignments', label: 'Assignments', icon: ClipboardList },
-];
-
 function isoToday(): string {
   const d = new Date();
   const y = d.getFullYear();
@@ -181,8 +173,8 @@ export function ProductionDashboard() {
   const [chartSummary, setChartSummary] = useState<ProductionSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [chartsLoading, setChartsLoading] = useState(true);
+  const [chartsError, setChartsError] = useState<string | null>(null);
   const [chartPeriod, setChartPeriod] = useState<ChartPeriod>('thisMonth');
-  const [chartTab, setChartTab] = useState<ChartTab>('trends');
 
   const chartRange = useMemo(() => resolveChartPeriodRange(chartPeriod), [chartPeriod]);
 
@@ -190,8 +182,11 @@ export function ProductionDashboard() {
     setLoading(true);
     try {
       const res = await fetch('/api/production/analytics');
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'Failed to load KPIs');
       setSummary(data.summary || null);
+    } catch {
+      setSummary(null);
     } finally {
       setLoading(false);
     }
@@ -199,14 +194,20 @@ export function ProductionDashboard() {
 
   const loadCharts = useCallback(async () => {
     setChartsLoading(true);
+    setChartsError(null);
     try {
       const params = new URLSearchParams({
         fromDate: chartRange.fromDate,
         toDate: chartRange.toDate,
       });
       const res = await fetch(`/api/production/analytics?${params}`);
-      const data = await res.json();
-      setChartSummary(data.summary || null);
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'Failed to load charts');
+      if (!data.summary) throw new Error('No chart data returned');
+      setChartSummary(data.summary);
+    } catch (err) {
+      setChartSummary(null);
+      setChartsError(err instanceof Error ? err.message : 'Failed to load charts');
     } finally {
       setChartsLoading(false);
     }
@@ -467,7 +468,7 @@ export function ProductionDashboard() {
             </div>
           )}
 
-          <div className="sticky top-[4.25rem] z-20 mb-4 rounded-2xl border border-brand-100/80 bg-white/95 p-4 shadow-lg shadow-brand-900/10 backdrop-blur-md sm:p-5">
+          <div className="section-card mb-4 !p-4 sm:!p-5">
             <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
               <div>
                 <h2 className="text-sm font-semibold text-brand-800">Graphs</h2>
@@ -502,7 +503,7 @@ export function ProductionDashboard() {
             </div>
 
             <div
-              className="mb-3 flex flex-wrap gap-1.5"
+              className="flex flex-wrap gap-1.5"
               role="tablist"
               aria-label="Chart period"
             >
@@ -523,33 +524,9 @@ export function ProductionDashboard() {
                 </button>
               ))}
             </div>
-
-            <div
-              className="flex flex-wrap gap-1 rounded-xl bg-slate-100/80 p-1"
-              role="tablist"
-              aria-label="Chart category"
-            >
-              {CHART_TABS.map(({ key, label, icon: Icon }) => (
-                <button
-                  key={key}
-                  type="button"
-                  role="tab"
-                  aria-selected={chartTab === key}
-                  onClick={() => setChartTab(key)}
-                  className={`inline-flex flex-1 items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-xs font-semibold transition sm:flex-none ${
-                    chartTab === key
-                      ? 'bg-white text-brand-800 shadow-sm'
-                      : 'text-slate-600 hover:text-brand-700'
-                  }`}
-                >
-                  <Icon className="h-3.5 w-3.5" aria-hidden />
-                  {label}
-                </button>
-              ))}
-            </div>
           </div>
 
-          {chartsLoading || !chartSummary ? (
+          {chartsLoading ? (
             <div className="mb-6 grid gap-4 lg:grid-cols-2">
               {Array.from({ length: 4 }).map((_, i) => (
                 <div key={i} className="section-card !p-5">
@@ -558,194 +535,207 @@ export function ProductionDashboard() {
                 </div>
               ))}
             </div>
+          ) : chartsError || !chartSummary ? (
+            <div className="section-card mb-6 flex flex-wrap items-center justify-between gap-3">
+              <p className="text-sm text-red-700">
+                {chartsError || 'Charts could not be loaded for this period.'}
+              </p>
+              <button type="button" className="btn-secondary" onClick={loadCharts}>
+                <RefreshCw className="h-4 w-4" />
+                Retry
+              </button>
+            </div>
           ) : (
             <>
-              {chartTab === 'trends' && (
-                <div className="mb-6 grid gap-4 lg:grid-cols-2">
-                  <ChartPanel
-                    title={showDailyBars ? 'Production by day' : 'Daily production trend'}
-                    hint={
-                      showDailyBars
-                        ? 'Jobs per day in the selected period'
-                        : 'Jobs (brand) vs amount ÷ 1000 (teal)'
-                    }
-                  >
-                    {showDailyBars ? (
-                      <SimpleBarChart
-                        hideEmpty={false}
-                        items={chartSummary.dailyTrend.map((d) => ({
-                          label: shortDayLabel(d.date),
-                          value: d.jobs,
-                        }))}
-                      />
-                    ) : (
-                      <SimpleLineChart
-                        legendA="Jobs"
-                        legendB="Amount ÷ 1000"
-                        points={chartSummary.dailyTrend.map((d) => ({
-                          label: shortDayLabel(d.date),
-                          a: d.jobs,
-                          b: Math.round(d.amount / 1000),
-                        }))}
-                      />
-                    )}
-                  </ChartPanel>
-                  <ChartPanel
-                    title="Production value by day"
-                    hint="Amount (incl. VAT) per day"
-                  >
+              <h3 className="mb-3 text-xs font-semibold uppercase tracking-wider text-slate-500">
+                Trends · {periodLabel}
+              </h3>
+              <div className="mb-6 grid gap-4 lg:grid-cols-2">
+                <ChartPanel
+                  title={showDailyBars ? 'Production by day' : 'Daily production trend'}
+                  hint={
+                    showDailyBars
+                      ? 'Jobs per day in the selected period'
+                      : 'Jobs (brand) vs amount ÷ 1000 (teal)'
+                  }
+                >
+                  {showDailyBars ? (
                     <SimpleBarChart
                       hideEmpty={false}
-                      items={chartSummary.dailyTrend.map((d) => ({
+                      items={(chartSummary.dailyTrend ?? []).map((d) => ({
                         label: shortDayLabel(d.date),
-                        value: Math.round(d.amount),
+                        value: d.jobs,
                       }))}
                     />
-                  </ChartPanel>
-                  <ChartPanel
-                    title={`Production by insurer · ${periodLabel}`}
-                    count={chartSummary.byInsurer.length}
-                    hint="Top 10 by jobs"
-                  >
-                    <SimpleHorizontalBars
-                      maxHeight={320}
-                      items={chartSummary.byInsurer.slice(0, 10).map((i) => ({
-                        label: `${i.name} (${formatMoney(i.amount)})`,
-                        value: i.jobs,
+                  ) : (
+                    <SimpleLineChart
+                      legendA="Jobs"
+                      legendB="Amount ÷ 1000"
+                      points={(chartSummary.dailyTrend ?? []).map((d) => ({
+                        label: shortDayLabel(d.date),
+                        a: d.jobs,
+                        b: Math.round(d.amount / 1000),
                       }))}
                     />
-                  </ChartPanel>
-                  <ChartPanel
-                    title={`Production by Done By · ${periodLabel}`}
-                    count={chartSummary.byDoneBy.length}
-                    hint="Ranked by production value"
-                  >
-                    <SimpleHorizontalBars
-                      maxHeight={320}
-                      formatValue={(v) => formatMoney(v)}
-                      items={chartSummary.byDoneBy.slice(0, 10).map((i) => ({
-                        label: i.name,
-                        value: i.amount,
-                      }))}
-                    />
-                  </ChartPanel>
-                </div>
-              )}
+                  )}
+                </ChartPanel>
+                <ChartPanel
+                  title="Production value by day"
+                  hint="Amount (incl. VAT) per day"
+                >
+                  <SimpleBarChart
+                    hideEmpty={false}
+                    items={(chartSummary.dailyTrend ?? []).map((d) => ({
+                      label: shortDayLabel(d.date),
+                      value: Math.round(d.amount),
+                    }))}
+                  />
+                </ChartPanel>
+                <ChartPanel
+                  title={`Production by insurer · ${periodLabel}`}
+                  count={(chartSummary.byInsurer ?? []).length}
+                  hint="Top 10 by jobs"
+                >
+                  <SimpleHorizontalBars
+                    maxHeight={320}
+                    items={(chartSummary.byInsurer ?? []).slice(0, 10).map((i) => ({
+                      label: `${i.name} (${formatMoney(i.amount)})`,
+                      value: i.jobs,
+                    }))}
+                  />
+                </ChartPanel>
+                <ChartPanel
+                  title={`Production by Done By · ${periodLabel}`}
+                  count={(chartSummary.byDoneBy ?? []).length}
+                  hint="Ranked by production value"
+                >
+                  <SimpleHorizontalBars
+                    maxHeight={320}
+                    formatValue={(v) => formatMoney(v)}
+                    items={(chartSummary.byDoneBy ?? []).slice(0, 10).map((i) => ({
+                      label: i.name,
+                      value: i.amount,
+                    }))}
+                  />
+                </ChartPanel>
+              </div>
 
-              {chartTab === 'people' && (
-                <div className="mb-6 grid gap-4 lg:grid-cols-2">
-                  <ChartPanel
-                    title={`By Seen By · ${periodLabel}`}
-                    count={chartSummary.bySeenBy.length}
-                    hint="All persons · jobs reviewed"
-                  >
-                    <SimpleHorizontalBars
-                      maxHeight={420}
-                      items={chartSummary.bySeenBy.map((i) => ({
-                        label: i.name,
-                        value: i.jobs,
-                      }))}
-                    />
-                  </ChartPanel>
-                  <ChartPanel
-                    title={`By Instructed By · ${periodLabel}`}
-                    count={chartSummary.byInstructedBy.length}
-                    hint="All persons · jobs instructed"
-                  >
-                    <SimpleHorizontalBars
-                      maxHeight={420}
-                      items={chartSummary.byInstructedBy.map((i) => ({
-                        label: i.name,
-                        value: i.jobs,
-                      }))}
-                    />
-                  </ChartPanel>
-                  <ChartPanel
-                    title={`Done By · ${periodLabel}`}
-                    count={chartSummary.byDoneBy.length}
-                    hint="All staff · production value"
-                  >
-                    <SimpleHorizontalBars
-                      maxHeight={420}
-                      formatValue={(v) => formatMoney(v)}
-                      items={chartSummary.byDoneBy.map((i) => ({
-                        label: i.name,
-                        value: i.amount,
-                      }))}
-                    />
-                  </ChartPanel>
-                  <ChartPanel
-                    title="Staff leaderboard (this month)"
-                    count={summary.staffLeaderboard.length}
-                    hint="From overview · ranked by value"
-                  >
-                    <SimpleHorizontalBars
-                      maxHeight={420}
-                      formatValue={(v) => formatMoney(v)}
-                      items={summary.staffLeaderboard.map((s) => ({
-                        label: `${s.name} · ${s.jobs} jobs`,
-                        value: s.amount,
-                      }))}
-                    />
-                  </ChartPanel>
-                </div>
-              )}
+              <h3 className="mb-3 text-xs font-semibold uppercase tracking-wider text-slate-500">
+                People · {periodLabel}
+              </h3>
+              <div className="mb-6 grid gap-4 lg:grid-cols-2">
+                <ChartPanel
+                  title={`By Seen By · ${periodLabel}`}
+                  count={(chartSummary.bySeenBy ?? []).length}
+                  hint="All persons · jobs reviewed"
+                >
+                  <SimpleHorizontalBars
+                    maxHeight={420}
+                    items={(chartSummary.bySeenBy ?? []).map((i) => ({
+                      label: i.name,
+                      value: i.jobs,
+                    }))}
+                  />
+                </ChartPanel>
+                <ChartPanel
+                  title={`By Instructed By · ${periodLabel}`}
+                  count={(chartSummary.byInstructedBy ?? []).length}
+                  hint="All persons · jobs instructed"
+                >
+                  <SimpleHorizontalBars
+                    maxHeight={420}
+                    items={(chartSummary.byInstructedBy ?? []).map((i) => ({
+                      label: i.name,
+                      value: i.jobs,
+                    }))}
+                  />
+                </ChartPanel>
+                <ChartPanel
+                  title={`Done By · ${periodLabel}`}
+                  count={(chartSummary.byDoneBy ?? []).length}
+                  hint="All staff · production value"
+                >
+                  <SimpleHorizontalBars
+                    maxHeight={420}
+                    formatValue={(v) => formatMoney(v)}
+                    items={(chartSummary.byDoneBy ?? []).map((i) => ({
+                      label: i.name,
+                      value: i.amount,
+                    }))}
+                  />
+                </ChartPanel>
+                <ChartPanel
+                  title="Staff leaderboard (this month)"
+                  count={(summary.staffLeaderboard ?? []).length}
+                  hint="From overview · ranked by value"
+                >
+                  <SimpleHorizontalBars
+                    maxHeight={420}
+                    formatValue={(v) => formatMoney(v)}
+                    items={(summary.staffLeaderboard ?? []).map((s) => ({
+                      label: `${s.name} · ${s.jobs} jobs`,
+                      value: s.amount,
+                    }))}
+                  />
+                </ChartPanel>
+              </div>
 
-              {chartTab === 'assignments' && (
-                <div className="mb-6 grid gap-4 lg:grid-cols-2">
-                  <ChartPanel
-                    title={`Production by Assignment · ${periodLabel}`}
-                    count={chartSummary.byAssignment.length}
-                    hint="Jobs by assignment type"
-                  >
-                    <SimpleHorizontalBars
-                      maxHeight={320}
-                      items={chartSummary.byAssignment.map((i) => ({
-                        label: `${i.name} (${formatMoney(i.amount)})`,
-                        value: i.jobs,
-                      }))}
-                    />
-                  </ChartPanel>
-                  <ChartPanel
-                    title={`Assignment value · ${periodLabel}`}
-                    hint="Amount (incl. VAT) by assignment type"
-                  >
-                    <SimpleBarChart
-                      hideEmpty
-                      items={chartSummary.byAssignment.slice(0, 8).map((i) => ({
-                        label: i.name.length > 14 ? `${i.name.slice(0, 12)}…` : i.name,
-                        value: Math.round(i.amount),
-                      }))}
-                    />
-                  </ChartPanel>
-                  <ChartPanel
-                    title={`Assignments by Done By · ${periodLabel}`}
-                    count={chartSummary.byDoneByAssignment.length}
-                    hint="User · assignment type (jobs completed)"
-                  >
-                    <SimpleHorizontalBars
-                      maxHeight={420}
-                      items={chartSummary.byDoneByAssignment.map((i) => ({
-                        label: `${i.name} (${formatMoney(i.amount)})`,
-                        value: i.jobs,
-                      }))}
-                    />
-                  </ChartPanel>
-                  <ChartPanel
-                    title={`Assignments by Seen By · ${periodLabel}`}
-                    count={chartSummary.bySeenByAssignment.length}
-                    hint="User · assignment type (jobs reviewed)"
-                  >
-                    <SimpleHorizontalBars
-                      maxHeight={420}
-                      items={chartSummary.bySeenByAssignment.map((i) => ({
-                        label: `${i.name} (${formatMoney(i.amount)})`,
-                        value: i.jobs,
-                      }))}
-                    />
-                  </ChartPanel>
-                </div>
-              )}
+              <h3 className="mb-3 text-xs font-semibold uppercase tracking-wider text-slate-500">
+                Assignments · {periodLabel}
+              </h3>
+              <div className="mb-6 grid gap-4 lg:grid-cols-2">
+                <ChartPanel
+                  title={`Production by Assignment · ${periodLabel}`}
+                  count={(chartSummary.byAssignment ?? []).length}
+                  hint="Jobs by assignment type"
+                >
+                  <SimpleHorizontalBars
+                    maxHeight={320}
+                    items={(chartSummary.byAssignment ?? []).map((i) => ({
+                      label: `${i.name} (${formatMoney(i.amount)})`,
+                      value: i.jobs,
+                    }))}
+                  />
+                </ChartPanel>
+                <ChartPanel
+                  title={`Assignment value · ${periodLabel}`}
+                  hint="Amount (incl. VAT) by assignment type"
+                >
+                  <SimpleBarChart
+                    hideEmpty
+                    items={(chartSummary.byAssignment ?? []).slice(0, 8).map((i) => ({
+                      label: i.name.length > 14 ? `${i.name.slice(0, 12)}…` : i.name,
+                      value: Math.round(i.amount),
+                    }))}
+                  />
+                </ChartPanel>
+                <ChartPanel
+                  title={`Assignments by Done By · ${periodLabel}`}
+                  count={(chartSummary.byDoneByAssignment ?? []).length}
+                  hint="User · assignment type (jobs completed)"
+                >
+                  <SimpleHorizontalBars
+                    maxHeight={420}
+                    items={(chartSummary.byDoneByAssignment ?? []).map((i) => ({
+                      label: `${i.name} (${formatMoney(i.amount)})`,
+                      value: i.jobs,
+                    }))}
+                  />
+                </ChartPanel>
+                <ChartPanel
+                  title={`Assignments by Seen By · ${periodLabel}`}
+                  count={(chartSummary.bySeenByAssignment ?? []).length}
+                  hint="User · assignment type (jobs reviewed)"
+                >
+                  <SimpleHorizontalBars
+                    maxHeight={420}
+                    items={(chartSummary.bySeenByAssignment ?? []).map((i) => ({
+                      label: `${i.name} (${formatMoney(i.amount)})`,
+                      value: i.jobs,
+                    }))}
+                  />
+                </ChartPanel>
+              </div>
             </>
           )}
 

@@ -63,19 +63,25 @@ export function SimpleHorizontalBars({
   formatValue,
   maxHeight,
 }: {
-  items: BarItem[];
+  items: BarItem[] | null | undefined;
   /** Display formatter for the numeric value (bar width still uses raw value). */
   formatValue?: (value: number) => string;
   /** Scroll when the list is long (e.g. full person lists). */
   maxHeight?: number;
 }) {
-  const max = Math.max(...items.map((i) => i.value), 1);
+  const list = items ?? [];
+  if (!list.length) {
+    return <p className="py-6 text-center text-sm text-slate-500">No data for this period.</p>;
+  }
+
+  const max = Math.max(...list.map((i) => Number(i.value) || 0), 1);
   const fmt = formatValue || ((v: number) => String(v));
 
   const body = (
     <div className="space-y-2.5">
-      {items.map((item, idx) => {
-        const pct = (item.value / max) * 100;
+      {list.map((item, idx) => {
+        const value = Number(item.value) || 0;
+        const pct = (value / max) * 100;
         const color = item.color || DEFAULT_COLORS[idx % DEFAULT_COLORS.length];
         return (
           <div key={`${item.label}-${idx}`}>
@@ -84,7 +90,7 @@ export function SimpleHorizontalBars({
                 {item.label}
               </span>
               <span className="shrink-0 font-semibold tabular-nums text-slate-800">
-                {fmt(item.value)}
+                {fmt(value)}
               </span>
             </div>
             <div className="h-2 overflow-hidden rounded-full bg-slate-100">
@@ -96,13 +102,10 @@ export function SimpleHorizontalBars({
           </div>
         );
       })}
-      {items.length === 0 && (
-        <p className="py-6 text-center text-sm text-slate-500">No data for this period.</p>
-      )}
     </div>
   );
 
-  if (maxHeight != null && items.length > 0) {
+  if (maxHeight != null) {
     return (
       <div className="overflow-y-auto pr-1" style={{ maxHeight }}>
         {body}
