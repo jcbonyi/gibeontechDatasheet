@@ -443,7 +443,7 @@ export function ProductionDashboard() {
                     By Seen By · {periodLabel}
                   </h2>
                   <SimpleHorizontalBars
-                    items={chartSummary.bySeenBy.slice(0, 8).map((i) => ({
+                    items={chartSummary.bySeenBy.map((i) => ({
                       label: i.name,
                       value: i.jobs,
                     }))}
@@ -454,7 +454,7 @@ export function ProductionDashboard() {
                     By Instructed By · {periodLabel}
                   </h2>
                   <SimpleHorizontalBars
-                    items={chartSummary.byInstructedBy.slice(0, 8).map((i) => ({
+                    items={chartSummary.byInstructedBy.map((i) => ({
                       label: i.name,
                       value: i.jobs,
                     }))}
