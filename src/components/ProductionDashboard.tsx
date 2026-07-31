@@ -19,7 +19,11 @@ import {
 } from '@/lib/productionAnalytics';
 
 function isoToday(): string {
-  return new Date().toISOString().slice(0, 10);
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
 }
 
 function startOfWeek(): string {
@@ -27,13 +31,17 @@ function startOfWeek(): string {
   const day = d.getDay();
   const diff = day === 0 ? -6 : 1 - day;
   d.setDate(d.getDate() + diff);
-  return d.toISOString().slice(0, 10);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const dayNum = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${dayNum}`;
 }
 
 function monthStart(): string {
   const d = new Date();
-  d.setDate(1);
-  return d.toISOString().slice(0, 10);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  return `${y}-${m}-01`;
 }
 
 function registerHref(params: Record<string, string | number | null | undefined>): string {
@@ -143,6 +151,24 @@ export function ProductionDashboard() {
     chartPeriod === 'thisWeek' ||
     chartPeriod === 'lastWeek';
 
+  // Keep Top staff in lockstep with "Production by Done By · This Month"
+  const topStaffName =
+    chartPeriod === 'thisMonth' && chartSummary
+      ? chartSummary.byDoneBy.find((s) => s.name !== 'Unassigned')?.name ||
+        chartSummary.kpis.topStaff ||
+        null
+      : k?.topStaff || null;
+  const topStaffAmount =
+    chartPeriod === 'thisMonth' && chartSummary
+      ? chartSummary.byDoneBy.find((s) => s.name !== 'Unassigned')?.amount ??
+        chartSummary.kpis.topStaffMonthAmount ??
+        null
+      : k?.topStaffMonthAmount ?? null;
+  const topStaffUserId =
+    chartPeriod === 'thisMonth' && chartSummary
+      ? chartSummary.kpis.topStaffUserId
+      : k?.topStaffUserId;
+
   return (
     <div className="pb-8">
       <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
@@ -219,14 +245,14 @@ export function ProductionDashboard() {
             />
             <Link
               href={
-                k?.topStaffUserId
+                topStaffUserId
                   ? registerHref({
-                      doneBy: k.topStaffUserId,
+                      doneBy: topStaffUserId,
                       fromDate: monthFrom,
                       toDate: today,
                     })
-                  : k?.topStaff
-                    ? registerHref({ q: k.topStaff, fromDate: monthFrom, toDate: today })
+                  : topStaffName
+                    ? registerHref({ q: topStaffName, fromDate: monthFrom, toDate: today })
                     : registerHref({ fromDate: monthFrom, toDate: today })
               }
               className="section-card group block !p-4 transition hover:border-brand-300 hover:shadow-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-400"
@@ -236,11 +262,11 @@ export function ProductionDashboard() {
                 <p className="text-xs font-semibold uppercase text-slate-500">Top staff</p>
               </div>
               <p className="mt-1 text-lg font-bold text-slate-900 group-hover:text-brand-700">
-                {k?.topStaff || '—'}
+                {topStaffName || '—'}
               </p>
               <p className="text-sm text-slate-600">
-                {k?.topStaffMonthAmount != null
-                  ? `${formatMoney(k.topStaffMonthAmount)} this month`
+                {topStaffAmount != null
+                  ? `${formatMoney(topStaffAmount)} this month`
                   : 'No production this month'}
               </p>
               <p className="mt-2 text-xs font-medium text-brand-600 opacity-0 transition group-hover:opacity-100">

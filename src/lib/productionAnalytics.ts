@@ -14,7 +14,11 @@ function startOfWeek(d: Date): Date {
 }
 
 function isoDate(d: Date): string {
-  return d.toISOString().slice(0, 10);
+  // Local calendar date (avoid UTC shifting in UTC+3 / similar zones)
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
 }
 
 function sum(nums: number[]): number {
@@ -30,19 +34,22 @@ function groupCountAmount(
   rows: DbProductionEntry[],
   keyFn: (r: DbProductionEntry) => string,
 ): { name: string; jobs: number; amount: number; withoutVat: number }[] {
-  const map = new Map<string, { jobs: number; amount: number; withoutVat: number }>();
+  const map = new Map<string, { name: string; jobs: number; amount: number; withoutVat: number }>();
   for (const r of rows) {
     if (r.status === 'cancelled') continue;
-    const key = keyFn(r) || 'Unknown';
-    const cur = map.get(key) || { jobs: 0, amount: 0, withoutVat: 0 };
+    const raw = (keyFn(r) || 'Unknown').trim() || 'Unknown';
+    const key = raw.toLowerCase();
+    const cur = map.get(key) || { name: raw, jobs: 0, amount: 0, withoutVat: 0 };
     cur.jobs += 1;
     cur.amount += Number(r.amount) || 0;
     cur.withoutVat += Number(r.amount_without_vat) || 0;
+    // Prefer a stable display casing once set
+    if (cur.name === 'Unknown' && raw !== 'Unknown') cur.name = raw;
     map.set(key, cur);
   }
-  return [...map.entries()]
-    .map(([name, v]) => ({
-      name,
+  return [...map.values()]
+    .map((v) => ({
+      name: v.name,
       jobs: v.jobs,
       amount: Math.round(v.amount * 100) / 100,
       withoutVat: Math.round(v.withoutVat * 100) / 100,
@@ -176,43 +183,27 @@ export function buildProductionSummary(
         }
       : undefined;
 
-  // Top staff = highest individual production VALUE this month (not job count / all-time).
-  const staffMonthTotals = new Map<
-    string,
-    { userId: number | null; name: string; jobs: number; amount: number }
-  >();
-  for (const r of monthRows) {
-    const name = (r.done_by_name || 'Unassigned').trim() || 'Unassigned';
-    const key =
-      r.done_by_user_id != null ? `id:${r.done_by_user_id}` : `name:${name.toLowerCase()}`;
-    const cur = staffMonthTotals.get(key) || {
-      userId: r.done_by_user_id ?? null,
-      name,
-      jobs: 0,
-      amount: 0,
-    };
-    cur.jobs += 1;
-    cur.amount += Number(r.amount) || 0;
-    if (cur.name === 'Unassigned' && name !== 'Unassigned') cur.name = name;
-    staffMonthTotals.set(key, cur);
-  }
-  const topStaff = [...staffMonthTotals.values()]
-    .filter((s) => s.name !== 'Unassigned')
-    .sort((a, b) => b.amount - a.amount || b.jobs - a.jobs)[0];
+  // Top staff = same monthly Done By rollup as the chart (by name, by amount).
+  const monthByDoneBy = groupCountAmount(monthRows, (r) => r.done_by_name || 'Unassigned');
+  const topStaff =
+    monthByDoneBy.find((s) => s.name !== 'Unassigned') || monthByDoneBy[0] || null;
 
-  const topStaffName = topStaff?.name || null;
-  const topStaffUserId = topStaff?.userId ?? null;
-  const topStaffMonthAmount = topStaff
-    ? Math.round(topStaff.amount * 100) / 100
-    : null;
+  const topStaffName =
+    topStaff && topStaff.name !== 'Unassigned' ? topStaff.name : null;
+  const topStaffMonthAmount = topStaffName != null ? topStaff.amount : null;
+  const topStaffUserId =
+    topStaffName != null
+      ? monthRows.find(
+          (r) =>
+            (r.done_by_name || 'Unassigned').trim().toLowerCase() ===
+              topStaffName.toLowerCase() && r.done_by_user_id != null,
+        )?.done_by_user_id ?? null
+      : null;
   const topInsurerName = byInsurer[0]?.name || null;
   const topInsurerId =
     topInsurerName && topInsurerName !== 'Unknown'
       ? active.find((r) => (r.insurer_name || 'Unknown') === topInsurerName)?.insurer_id ?? null
       : null;
-
-  // Staff leaderboard for the current month, ranked by production value.
-  const monthByDoneBy = groupCountAmount(monthRows, (r) => r.done_by_name || 'Unassigned');
 
   return {
     kpis: {
