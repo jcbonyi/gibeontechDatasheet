@@ -26,14 +26,17 @@ const ROLE_RANK: Record<UserRole, number> = {
   Assessor: 1,
 };
 
-/** Users who may jump any task to any status (including Approved / Report Issued). */
-const STATUS_OVERRIDE_NAMES = ['caro', 'lucy'] as const;
+/** Name allowlist for any-status override (in addition to Admin role). */
+const STATUS_OVERRIDE_NAMES = ['caro', 'lucy', 'moses njiraini', 'admin'] as const;
 
 /**
- * Match display names like "Caro", "Lucy", "Caro Wanjiku" — not "Caroline".
+ * Caro, Lucy, Moses Njiraini, named Admin, and all Admin-role users
+ * may set any status on any task (including Approved / Report Issued).
  */
 export function canOverrideAnyStatus(user: AuthUser | null | undefined): boolean {
-  if (!user?.name) return false;
+  if (!user) return false;
+  if (user.role === 'Admin') return true;
+  if (!user.name) return false;
   const n = user.name.trim().toLowerCase();
   return STATUS_OVERRIDE_NAMES.some((k) => n === k || n.startsWith(`${k} `));
 }
