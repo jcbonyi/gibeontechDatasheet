@@ -22,7 +22,12 @@ import {
   X,
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
-import { canAssignDatasheet, canDeleteDatasheet, canViewAllDatasheets } from '@/lib/permissions';
+import {
+  canAssignDatasheet,
+  canDeleteDatasheet,
+  canOverrideAnyStatus,
+  canViewAllDatasheets,
+} from '@/lib/permissions';
 import { ROLE_LABELS, type DatasheetStatus, type UserRole } from '@/types/datasheet';
 import {
   BOARD_STATUSES,
@@ -116,6 +121,7 @@ export function DatasheetRegister() {
   const boardScrollRef = useRef<HTMLDivElement>(null);
 
   const canAssign = user ? canAssignDatasheet(user) : false;
+  const canOverrideStatus = user ? canOverrideAnyStatus(user) : false;
   const canDelete = user ? canDeleteDatasheet(user) : false;
   const viewAll = user ? canViewAllDatasheets(user.role) : false;
   const isAdmin = user?.role === 'Admin';
@@ -288,19 +294,11 @@ export function DatasheetRegister() {
   const canAllocateRow = (status: DatasheetStatus) =>
     canAssign && (isAdmin || isOpenStatus(status));
 
-  const handleDrop = async (targetStatus: DatasheetStatus, e: React.DragEvent) => {
-    e.preventDefault();
-    setDragOverTarget('');
-    const raw = e.dataTransfer.getData('application/json');
-    if (!raw) return;
-
-    let payload: { id: number; status: DatasheetStatus };
-    try {
-      payload = JSON.parse(raw);
-    } catch {
-      return;
-    }
-    const { id, status: fromStatus } = payload;
+  const changeStatus = async (
+    id: number,
+    fromStatus: DatasheetStatus,
+    targetStatus: DatasheetStatus,
+  ) => {
     if (!id || fromStatus === targetStatus) return;
 
     let reason = '';
@@ -360,6 +358,47 @@ export function DatasheetRegister() {
 
     setActionMessage(`Task moved to ${STATUS_LABELS[targetStatus]}`);
     load();
+  };
+
+  const handleDrop = async (targetStatus: DatasheetStatus, e: React.DragEvent) => {
+    e.preventDefault();
+    setDragOverTarget('');
+    const raw = e.dataTransfer.getData('application/json');
+    if (!raw) return;
+
+    let payload: { id: number; status: DatasheetStatus };
+    try {
+      payload = JSON.parse(raw);
+    } catch {
+      return;
+    }
+    await changeStatus(payload.id, payload.status, targetStatus);
+  };
+
+  const renderStatusSelect = (row: DatasheetRow) => {
+    if (!canOverrideStatus) return null;
+    return (
+      <select
+        aria-label={`Change status for ${row.serial_no}`}
+        value={row.status}
+        className="form-input w-full py-1 text-[11px] font-semibold"
+        title="Change status (any status allowed)"
+        onClick={(e) => e.stopPropagation()}
+        onMouseDown={(e) => e.stopPropagation()}
+        onDragStart={(e) => e.stopPropagation()}
+        onChange={(e) => {
+          const next = e.target.value as DatasheetStatus;
+          if (next === row.status) return;
+          void changeStatus(row.id, row.status, next);
+        }}
+      >
+        {DATASHEET_STATUSES.map((s) => (
+          <option key={s} value={s}>
+            {STATUS_LABELS[s]}
+          </option>
+        ))}
+      </select>
+    );
   };
 
   const handleDragStart = (row: DatasheetRow, e: React.DragEvent) => {
@@ -431,6 +470,16 @@ export function DatasheetRegister() {
           {row.assigned_to_name || row.created_by_name || 'Unassigned'}
           {row.done_by_name ? ` · Done by ${row.done_by_name}` : ''}
         </p>
+        {canOverrideStatus && (
+          <div
+            className="mt-2"
+            onClick={(e) => e.stopPropagation()}
+            onMouseDown={(e) => e.stopPropagation()}
+            onDragStart={(e) => e.stopPropagation()}
+          >
+            {renderStatusSelect(row)}
+          </div>
+        )}
         {canAllocateRow(row.status) && (
           <div
             className="mt-2 flex items-center gap-1"
@@ -852,6 +901,27 @@ export function DatasheetRegister() {
                 <p className="mt-2 text-xs font-semibold text-slate-500">Drop here to cancel</p>
                 <p className="mt-1 text-[11px] text-slate-400">Requires a cancellation reason</p>
               </div>
+
+              {canOverrideStatus && (
+                <div
+                  data-shortcut="closed-drop-zone"
+                  onDragOver={(e) => {
+                    e.preventDefault();
+                    setDragOverTarget('closed');
+                  }}
+                  onDragLeave={() => setDragOverTarget((cur) => (cur === 'closed' ? '' : cur))}
+                  onDrop={(e) => handleDrop('closed', e)}
+                  className={`task-column flex w-40 shrink-0 flex-col items-center justify-center border-2 border-dashed text-center ${
+                    dragOverTarget === 'closed'
+                      ? 'border-slate-500 bg-slate-100 ring-2 ring-slate-400'
+                      : 'border-slate-300 bg-slate-50/60'
+                  }`}
+                >
+                  <Inbox className="h-6 w-6 text-slate-400" />
+                  <p className="mt-2 text-xs font-semibold text-slate-500">Drop here to close</p>
+                  <p className="mt-1 text-[11px] text-slate-400">Any → Closed</p>
+                </div>
+              )}
             </div>
             )}
           </div>
@@ -883,7 +953,7 @@ export function DatasheetRegister() {
                     <td>{row.claim_no || '—'}</td>
                     <td>{row.reg_no || '—'}</td>
                     <td>
-                      <StatusBadge status={row.status} />
+                      {canOverrideStatus ? renderStatusSelect(row) : <StatusBadge status={row.status} />}
                     </td>
                     <td className="text-slate-600">{row.date_of_instruction || '—'}</td>
                     <td>

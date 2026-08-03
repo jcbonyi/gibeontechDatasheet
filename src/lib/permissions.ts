@@ -3,6 +3,7 @@ import type { DatasheetStatus, UserRole } from '@/types/datasheet';
 import {
   ASSESSOR_EDITABLE_STATUSES,
   ASSESSOR_TARGET_STATUSES,
+  DATASHEET_STATUSES,
   getAvailableTransitions,
   isOpenStatus,
   isTerminalStatus,
@@ -24,6 +25,18 @@ const ROLE_RANK: Record<UserRole, number> = {
   OperationsManager: 2,
   Assessor: 1,
 };
+
+/** Users who may jump any task to any status (including Approved / Report Issued). */
+const STATUS_OVERRIDE_NAMES = ['caro', 'lucy'] as const;
+
+/**
+ * Match display names like "Caro", "Lucy", "Caro Wanjiku" — not "Caroline".
+ */
+export function canOverrideAnyStatus(user: AuthUser | null | undefined): boolean {
+  if (!user?.name) return false;
+  const n = user.name.trim().toLowerCase();
+  return STATUS_OVERRIDE_NAMES.some((k) => n === k || n.startsWith(`${k} `));
+}
 
 export interface DatasheetRecord {
   id?: number;
@@ -118,8 +131,13 @@ export function canTransitionStatus(
   ds: DatasheetRecord,
   next: DatasheetStatus,
 ): boolean {
-  const from = normalizeStatus(ds.status);
   const to = normalizeStatus(next);
+  // Caro / Lucy: any status on any task, regardless of current state or assignment.
+  if (canOverrideAnyStatus(user)) {
+    return (DATASHEET_STATUSES as string[]).includes(to);
+  }
+
+  const from = normalizeStatus(ds.status);
   if (!getAvailableTransitions(from).includes(to)) return false;
 
   if (to === 'report_issued' || to === 'closed') {
@@ -151,7 +169,9 @@ export function canTransitionStatus(
 
 export function getWorkflowActions(user: AuthUser, ds: DatasheetRecord): StatusAction[] {
   const from = normalizeStatus(ds.status);
-  const next = getAvailableTransitions(from);
+  const next = canOverrideAnyStatus(user)
+    ? DATASHEET_STATUSES.filter((s) => s !== from)
+    : getAvailableTransitions(from);
   const actions: StatusAction[] = [];
 
   for (const status of next) {
@@ -199,6 +219,7 @@ export function canAssignRole(actorRole: UserRole, newRole: UserRole): boolean {
 
 export function getDatasheetPermissions(user: AuthUser, ds: DatasheetRecord) {
   const status = normalizeStatus(ds.status);
+  const override = canOverrideAnyStatus(user);
   return {
     canView: canViewDatasheet(user, ds),
     canEdit: canEditDatasheet(user, ds),
@@ -209,13 +230,18 @@ export function getDatasheetPermissions(user: AuthUser, ds: DatasheetRecord) {
     canReopen:
       canReopenDatasheet(user) &&
       (isTerminalStatus(status) || status === 'report_issued' || status === 'on_hold' || status === 'approved'),
-    canMarkUnderReview: canReviewDatasheet(user) && (status === 'pending_review' || status === 'submitted'),
+    canMarkUnderReview:
+      override ||
+      (canReviewDatasheet(user) && (status === 'pending_review' || status === 'submitted')),
     canApprove:
-      canReviewDatasheet(user) &&
-      (status === 'pending_review' || status === 'under_review' || status === 'submitted'),
+      override ||
+      (canReviewDatasheet(user) &&
+        (status === 'pending_review' || status === 'under_review' || status === 'submitted')),
     canIssueReport:
-      canIssueReport(user) &&
-      (status === 'pending_review' || status === 'under_review' || status === 'approved'),
+      override ||
+      (canIssueReport(user) &&
+        (status === 'pending_review' || status === 'under_review' || status === 'approved')),
+    canOverrideAnyStatus: override,
     canDuplicate: canViewDatasheet(user, ds),
     workflowActions: getWorkflowActions(user, { ...ds, status }),
   };

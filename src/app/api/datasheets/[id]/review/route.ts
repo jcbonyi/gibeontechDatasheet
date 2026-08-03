@@ -3,7 +3,7 @@ import { getDatasheetById, logDatasheetAudit, updateDatasheetRecord } from '@/li
 import { canViewDatasheet } from '@/lib/auth';
 import { forbidden, badRequest, getAuthUser, unauthorized } from '@/lib/api';
 import { handleRouteError } from '@/lib/routeErrors';
-import { canIssueReport, canTransitionStatus } from '@/lib/permissions';
+import { canIssueReport, canOverrideAnyStatus, canTransitionStatus } from '@/lib/permissions';
 import { DATASHEET_STATUSES, normalizeStatus, STATUS_LABELS } from '@/lib/status';
 import type { DatasheetStatus } from '@/types/datasheet';
 import { CANCEL_REASONS } from '@/lib/opsConfig';
@@ -33,6 +33,7 @@ export async function PATCH(
     }
 
     const target = normalizeStatus(nextStatus as DatasheetStatus);
+    const statusOverride = canOverrideAnyStatus(user);
     if (!canTransitionStatus(user, datasheet, target)) {
       return forbidden();
     }
@@ -65,12 +66,12 @@ export async function PATCH(
       patch.query_reason = reason || cancelReason;
     }
     if (target === 'under_review' || target === 'approved' || target === 'report_issued') {
-      if (canIssueReport(user) || user.role === 'OperationsManager') {
+      if (canIssueReport(user) || user.role === 'OperationsManager' || statusOverride) {
         patch.reviewed_by = user.id;
         patch.reviewed_at = new Date().toISOString();
       }
     }
-    if (target === 'report_issued' && !canIssueReport(user)) {
+    if (target === 'report_issued' && !canIssueReport(user) && !statusOverride) {
       return forbidden();
     }
 
@@ -85,6 +86,7 @@ export async function PATCH(
       reason: reason || undefined,
       cancelReason: cancelReason || undefined,
       assignedToFrancis: francisId || undefined,
+      statusOverride: statusOverride || undefined,
     });
 
     return NextResponse.json({ datasheet: (await getDatasheetById(Number(id))) || updated });
