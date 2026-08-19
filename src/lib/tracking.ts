@@ -1,6 +1,7 @@
 import type { DatasheetStatus, FormType } from '@/types/datasheet';
 import { DATASHEET_STATUSES, isOpenStatus, normalizeStatus } from '@/lib/status';
 import type { DbAuditEntry, DbDatasheetListRow } from '@/lib/db';
+import { normalizeDisplayName, normalizeNameKey, preferDisplayName } from '@/lib/nameNormalize';
 
 export type AgeBand = '0-3' | '4-7' | '8-14' | '15+' | 'unknown';
 
@@ -78,6 +79,13 @@ export interface AnalyticsSummary {
     slaPct: number | null;
   }[];
   byInsurer: { name: string; count: number; open: number; overdue: number; slaPct: number | null }[];
+  /** Open tasks per assessor × instruction-age band (for workload aging views). */
+  pendingByAssessorAging: {
+    name: string;
+    band: AgeBand;
+    label: string;
+    count: number;
+  }[];
   byFormType: { type: string; count: number }[];
   volumeByMonth: { month: string; created: number; approved: number }[];
   agingQueue: {
@@ -270,12 +278,28 @@ export function buildAnalyticsSummary(
   const byAgeMap = new Map<AgeBand, number>();
   const byAssessorMap = new Map<
     string,
-    { total: number; open: number; overdue: number; ages: number[]; closedWithAge: number[]; withinSla: number }
+    {
+      displayName: string;
+      total: number;
+      open: number;
+      overdue: number;
+      ages: number[];
+      closedWithAge: number[];
+      withinSla: number;
+    }
   >();
   const byInsurerMap = new Map<
     string,
-    { count: number; open: number; overdue: number; closedWithAge: number[]; withinSla: number }
+    {
+      displayName: string;
+      count: number;
+      open: number;
+      overdue: number;
+      closedWithAge: number[];
+      withinSla: number;
+    }
   >();
+  const byAssessorAgeMap = new Map<string, { displayName: string; bands: Map<AgeBand, number> }>();
   const byFormTypeMap = new Map<string, number>();
   const volumeMap = new Map<string, { created: number; approved: number }>();
 
@@ -296,8 +320,10 @@ export function buildAnalyticsSummary(
     byAgeMap.set(row.age_band, (byAgeMap.get(row.age_band) || 0) + 1);
 
     const isUnassigned = !row.assigned_to_name;
-    const assessor = row.assigned_to_name || row.created_by_name || 'Unassigned';
-    const a = byAssessorMap.get(assessor) || {
+    const rawAssessor = row.assigned_to_name || row.created_by_name || 'Unassigned';
+    const assessorKey = normalizeNameKey(rawAssessor);
+    const a = byAssessorMap.get(assessorKey) || {
+      displayName: normalizeDisplayName(rawAssessor, 'Unassigned'),
       total: 0,
       open: 0,
       overdue: 0,
@@ -305,6 +331,7 @@ export function buildAnalyticsSummary(
       closedWithAge: [],
       withinSla: 0,
     };
+    a.displayName = preferDisplayName(a.displayName, rawAssessor);
     a.total += 1;
 
     if (isOpenStatus(row.status)) {
@@ -313,6 +340,13 @@ export function buildAnalyticsSummary(
       if (isUnassigned) unassigned += 1;
       if (row.age_days !== null) openAges.push(row.age_days);
       if (row.age_days !== null) a.ages.push(row.age_days);
+      const ageEntry = byAssessorAgeMap.get(assessorKey) || {
+        displayName: a.displayName,
+        bands: new Map<AgeBand, number>(),
+      };
+      ageEntry.displayName = preferDisplayName(ageEntry.displayName, rawAssessor);
+      ageEntry.bands.set(row.age_band, (ageEntry.bands.get(row.age_band) || 0) + 1);
+      byAssessorAgeMap.set(assessorKey, ageEntry);
       if (
         row.age_days != null &&
         row.age_days >= AT_RISK_FROM_DAY &&
@@ -337,16 +371,19 @@ export function buildAnalyticsSummary(
       a.overdue += 1;
       overdue += 1;
     }
-    byAssessorMap.set(assessor, a);
+    byAssessorMap.set(assessorKey, a);
 
-    const insurer = row.client_insurer || 'Unknown';
-    const ins = byInsurerMap.get(insurer) || {
+    const rawInsurer = row.client_insurer || 'Unknown';
+    const insurerKey = normalizeNameKey(rawInsurer);
+    const ins = byInsurerMap.get(insurerKey) || {
+      displayName: normalizeDisplayName(rawInsurer, 'Unknown'),
       count: 0,
       open: 0,
       overdue: 0,
       closedWithAge: [],
       withinSla: 0,
     };
+    ins.displayName = preferDisplayName(ins.displayName, rawInsurer);
     ins.count += 1;
     if (isOpenStatus(row.status)) ins.open += 1;
     if (row.is_overdue) ins.overdue += 1;
@@ -357,7 +394,7 @@ export function buildAnalyticsSummary(
       ins.closedWithAge.push(row.age_days);
       if (row.age_days <= SLA_DAYS) ins.withinSla += 1;
     }
-    byInsurerMap.set(insurer, ins);
+    byInsurerMap.set(insurerKey, ins);
 
     const types = row.form_types.length ? row.form_types : ['Unknown'];
     types.forEach((t: string) => byFormTypeMap.set(t, (byFormTypeMap.get(t) || 0) + 1));
@@ -411,6 +448,30 @@ export function buildAnalyticsSummary(
   const attentionTotal =
     overdue + unassigned + atRisk + pendingReview + underReview + queried;
 
+  const bandSeverity: Record<AgeBand, number> = {
+    '15+': 0,
+    '8-14': 1,
+    '4-7': 2,
+    '0-3': 3,
+    unknown: 4,
+  };
+
+  const pendingByAssessorAging = [...byAssessorAgeMap.entries()]
+    .flatMap(([, entry]) =>
+      AGE_BANDS.filter((band) => (entry.bands.get(band) || 0) > 0).map((band) => ({
+        name: entry.displayName,
+        band,
+        label: `${entry.displayName} · ${AGE_BAND_LABELS[band]}`,
+        count: entry.bands.get(band) || 0,
+      })),
+    )
+    .sort(
+      (a, b) =>
+        b.count - a.count ||
+        bandSeverity[a.band] - bandSeverity[b.band] ||
+        a.name.localeCompare(b.name),
+    );
+
   return {
     kpis: {
       total: rows.length,
@@ -443,8 +504,8 @@ export function buildAnalyticsSummary(
       count: byAgeMap.get(band) || 0,
     })),
     byAssessor: [...byAssessorMap.entries()]
-      .map(([name, v]) => ({
-        name,
+      .map(([, v]) => ({
+        name: v.displayName,
         total: v.total,
         open: v.open,
         overdue: v.overdue,
@@ -455,8 +516,8 @@ export function buildAnalyticsSummary(
       }))
       .sort((a, b) => b.open - a.open || b.total - a.total),
     byInsurer: [...byInsurerMap.entries()]
-      .map(([name, v]) => ({
-        name,
+      .map(([, v]) => ({
+        name: v.displayName,
         count: v.count,
         open: v.open,
         overdue: v.overdue,
@@ -465,6 +526,7 @@ export function buildAnalyticsSummary(
           : null,
       }))
       .sort((a, b) => b.open - a.open || b.count - a.count),
+    pendingByAssessorAging,
     byFormType: [...byFormTypeMap.entries()]
       .map(([type, count]) => ({ type, count }))
       .sort((a, b) => b.count - a.count),

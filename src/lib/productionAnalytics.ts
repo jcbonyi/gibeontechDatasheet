@@ -1,5 +1,6 @@
 import type { DbProductionEntry, DbProductionTarget } from '@/lib/productionDb';
 import { formatMoney } from '@/lib/productionConfig';
+import { normalizeDisplayName, normalizeNameKey, preferDisplayName } from '@/lib/nameNormalize';
 
 function dateOnly(v: string): string {
   return v.slice(0, 10);
@@ -37,14 +38,13 @@ function groupCountAmount(
   const map = new Map<string, { name: string; jobs: number; amount: number; withoutVat: number }>();
   for (const r of rows) {
     if (r.status === 'cancelled') continue;
-    const raw = (keyFn(r) || 'Unknown').trim() || 'Unknown';
-    const key = raw.toLowerCase();
+    const raw = normalizeDisplayName(keyFn(r) || 'Unknown', 'Unknown');
+    const key = normalizeNameKey(raw);
     const cur = map.get(key) || { name: raw, jobs: 0, amount: 0, withoutVat: 0 };
+    cur.name = preferDisplayName(cur.name, raw);
     cur.jobs += 1;
     cur.amount += Number(r.amount) || 0;
     cur.withoutVat += Number(r.amount_without_vat) || 0;
-    // Prefer a stable display casing once set
-    if (cur.name === 'Unknown' && raw !== 'Unknown') cur.name = raw;
     map.set(key, cur);
   }
   return [...map.values()]
@@ -134,15 +134,17 @@ export function buildProductionSummary(
 
   const byDoneBy = groupCountAmount(active, (r) => r.done_by_name || 'Unassigned');
   const byInsurer = groupCountAmount(active, (r) => r.insurer_name || 'Unknown');
-  const byAssignment = groupCountAmount(active, (r) => r.assignment?.trim() || 'Unspecified');
+  const byAssignment = groupCountAmount(active, (r) =>
+    normalizeDisplayName(r.assignment, 'Unspecified'),
+  );
   const byDoneByAssignment = groupCountAmount(active, (r) => {
-    const who = (r.done_by_name || 'Unassigned').trim() || 'Unassigned';
-    const assignment = r.assignment?.trim() || 'Unspecified';
+    const who = normalizeDisplayName(r.done_by_name, 'Unassigned');
+    const assignment = normalizeDisplayName(r.assignment, 'Unspecified');
     return `${who} · ${assignment}`;
   });
   const bySeenByAssignment = groupCountAmount(active, (r) => {
-    const who = (r.seen_by_name || 'Unassigned').trim() || 'Unassigned';
-    const assignment = r.assignment?.trim() || 'Unspecified';
+    const who = normalizeDisplayName(r.seen_by_name, 'Unassigned');
+    const assignment = normalizeDisplayName(r.assignment, 'Unspecified');
     return `${who} · ${assignment}`;
   });
 
@@ -211,14 +213,17 @@ export function buildProductionSummary(
     topStaffName != null
       ? monthRows.find(
           (r) =>
-            (r.done_by_name || 'Unassigned').trim().toLowerCase() ===
-              topStaffName.toLowerCase() && r.done_by_user_id != null,
+            normalizeNameKey(r.done_by_name || 'Unassigned') ===
+              normalizeNameKey(topStaffName) && r.done_by_user_id != null,
         )?.done_by_user_id ?? null
       : null;
   const topInsurerName = byInsurer[0]?.name || null;
   const topInsurerId =
     topInsurerName && topInsurerName !== 'Unknown'
-      ? active.find((r) => (r.insurer_name || 'Unknown') === topInsurerName)?.insurer_id ?? null
+      ? active.find(
+          (r) =>
+            normalizeNameKey(r.insurer_name || 'Unknown') === normalizeNameKey(topInsurerName),
+        )?.insurer_id ?? null
       : null;
 
   return {
