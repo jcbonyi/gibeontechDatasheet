@@ -1,12 +1,14 @@
 'use client';
 
 import Link from 'next/link';
-import { X } from 'lucide-react';
+import { FileText, X } from 'lucide-react';
 import { formatMoney, formatDisplayDate } from '@/lib/productionConfig';
-import { STATUS_LABELS, normalizeStatus } from '@/lib/status';
+import { formatDelayNotesSummary } from '@/lib/opsConfig';
+import { normalizeStatus } from '@/lib/status';
 import type { DatasheetStatus } from '@/types/datasheet';
 import type { DatasheetDrillEntry, ProductionDrillEntry } from '@/lib/productionDashboardDrillDown';
 import { StatusBadge } from '@/components/StatusBadge';
+import { downloadPendingDatasheetModalPdf } from '@/utils/pendingDatasheetModalPdf';
 
 export type DashboardDetailModalState =
   | {
@@ -35,6 +37,12 @@ export function ProductionDashboardDetailModal({
   if (!detail) return null;
 
   const count = detail.rows.length;
+  const isDatasheet = detail.kind === 'datasheet';
+
+  const handleGeneratePdf = () => {
+    if (detail.kind !== 'datasheet') return;
+    downloadPendingDatasheetModalPdf(detail.title, detail.subtitle, detail.rows);
+  };
 
   return (
     <div
@@ -45,7 +53,9 @@ export function ProductionDashboardDetailModal({
       onClick={onClose}
     >
       <div
-        className="flex max-h-[88vh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl border border-white/80 bg-white shadow-xl"
+        className={`flex max-h-[88vh] w-full flex-col overflow-hidden rounded-2xl border border-white/80 bg-white shadow-xl ${
+          isDatasheet ? 'max-w-6xl' : 'max-w-4xl'
+        }`}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex shrink-0 items-start justify-between gap-3 border-b border-slate-100 px-5 py-4">
@@ -118,40 +128,60 @@ export function ProductionDashboardDetailModal({
                   <th>Insurer</th>
                   <th>Assessor</th>
                   <th>Age</th>
+                  <th className="min-w-[12rem]">Delay note</th>
                 </tr>
               </thead>
               <tbody>
-                {detail.rows.map((r) => (
-                  <tr key={r.id} className={r.is_overdue ? 'bg-red-50/40' : undefined}>
-                    <td className="font-semibold text-brand-800">
-                      <Link href={`/datasheets/${r.id}`} className="hover:text-brand-600">
-                        {r.serial_no}
-                      </Link>
-                    </td>
-                    <td>{r.claim_no || '—'}</td>
-                    <td>{r.reg_no || '—'}</td>
-                    <td>
-                      <StatusBadge status={normalizeStatus(r.status) as DatasheetStatus} />
-                    </td>
-                    <td>{r.client_insurer || '—'}</td>
-                    <td>{r.assigned_to_name || r.created_by_name || '—'}</td>
-                    <td>
-                      {r.age_days != null ? (
-                        <span className={r.is_overdue ? 'font-semibold text-red-700' : ''}>
-                          {r.age_days}d
-                        </span>
-                      ) : (
-                        '—'
-                      )}
-                    </td>
-                  </tr>
-                ))}
+                {detail.rows.map((r) => {
+                  const delaySummary = formatDelayNotesSummary(r.delay_notes);
+                  return (
+                    <tr key={r.id} className={r.is_overdue ? 'bg-red-50/40' : undefined}>
+                      <td className="whitespace-nowrap font-semibold text-brand-800">
+                        <Link href={`/datasheets/${r.id}`} className="hover:text-brand-600">
+                          {r.serial_no}
+                        </Link>
+                      </td>
+                      <td>{r.claim_no || '—'}</td>
+                      <td>{r.reg_no || '—'}</td>
+                      <td>
+                        <StatusBadge status={normalizeStatus(r.status) as DatasheetStatus} />
+                      </td>
+                      <td>{r.client_insurer || '—'}</td>
+                      <td>{r.assigned_to_name || r.created_by_name || '—'}</td>
+                      <td className="whitespace-nowrap">
+                        {r.age_days != null ? (
+                          <span className={r.is_overdue ? 'font-semibold text-red-700' : ''}>
+                            {r.age_days}d
+                          </span>
+                        ) : (
+                          '—'
+                        )}
+                      </td>
+                      <td
+                        className="max-w-xs text-xs leading-relaxed text-slate-600"
+                        title={delaySummary !== '—' ? delaySummary : undefined}
+                      >
+                        {delaySummary}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           )}
         </div>
 
         <div className="flex shrink-0 flex-wrap items-center justify-end gap-2 border-t border-slate-100 px-5 py-3">
+          {isDatasheet && count > 0 ? (
+            <button
+              type="button"
+              className="btn-secondary text-sm"
+              onClick={handleGeneratePdf}
+            >
+              <FileText className="h-4 w-4" />
+              Generate PDF
+            </button>
+          ) : null}
           {detail.registerHref ? (
             <Link href={detail.registerHref} className="btn-secondary text-sm">
               Open in register

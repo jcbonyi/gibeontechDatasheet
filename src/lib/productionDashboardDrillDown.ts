@@ -28,6 +28,7 @@ export interface DatasheetDrillEntry {
   age_days: number | null;
   age_band: AgeBand;
   is_overdue: boolean;
+  delay_notes?: unknown;
 }
 
 

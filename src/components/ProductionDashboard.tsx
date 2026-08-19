@@ -96,6 +96,7 @@ function mapDatasheetEntries(raw: unknown): DatasheetDrillEntry[] {
       age_days: row.age_days != null ? Number(row.age_days) : null,
       age_band: (row.age_band as DatasheetDrillEntry['age_band']) || 'unknown',
       is_overdue: Boolean(row.is_overdue),
+      delay_notes: row.delay_notes,
     };
   });
 }

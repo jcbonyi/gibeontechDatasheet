@@ -33,6 +33,36 @@ export function delayReasonLabel(code: string | null | undefined): string {
   return DELAY_REASONS.find((r) => r.value === code)?.label || code || '—';
 }
 
+/** Short summary for tables / exports (most recent notes first). */
+export function formatDelayNotesSummary(raw: unknown, maxNotes = 2): string {
+  const notes = normalizeDelayNotes(raw);
+  if (!notes.length) return '—';
+  const sorted = [...notes].sort(
+    (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+  );
+  const parts = sorted.slice(0, maxNotes).map((n) => {
+    const reason = delayReasonLabel(n.reasonCode);
+    const text = n.note.length > 100 ? `${n.note.slice(0, 97)}…` : n.note;
+    return `${reason}: ${text}`;
+  });
+  if (sorted.length > maxNotes) parts.push(`+${sorted.length - maxNotes} more`);
+  return parts.join(' · ');
+}
+
+/** Full text for PDF cells (one line per note). */
+export function formatDelayNotesForPdf(raw: unknown): string {
+  const notes = normalizeDelayNotes(raw);
+  if (!notes.length) return '—';
+  return [...notes]
+    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+    .map((n) => {
+      const when = n.createdAt ? new Date(n.createdAt).toLocaleDateString() : '';
+      const reason = delayReasonLabel(n.reasonCode);
+      return when ? `[${when}] ${reason} — ${n.note}` : `${reason} — ${n.note}`;
+    })
+    .join('\n');
+}
+
 export interface DelayNote {
   id: string;
   note: string;
