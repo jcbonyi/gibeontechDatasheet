@@ -15,6 +15,7 @@ import { toListItem } from '@/lib/tracking';
 import { extractDenormalizedFields } from '@/lib/extractFields';
 import { ensureReviewTasksAssignedToFrancis } from '@/lib/reviewAssignee';
 import { applyProductionIssuedToDatasheets, shouldAutoIssueDatasheet } from '@/lib/syncDatasheetFromProduction';
+import { parseIdListParam } from '@/lib/dashboardRegisterLinks';
 
 export async function GET(req: NextRequest) {
   try {
@@ -37,6 +38,7 @@ export async function GET(req: NextRequest) {
       q: searchParams.get('q') || undefined,
       insurer: searchParams.get('insurer') || undefined,
       unallocated: searchParams.get('unallocated') === '1',
+      ids: parseIdListParam(searchParams.get('ids')),
       viewAll: canViewAllDatasheets(user.role),
       scopeUserId: canViewAllDatasheets(user.role) ? undefined : user.id,
     });

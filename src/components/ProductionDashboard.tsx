@@ -97,6 +97,11 @@ function mapDatasheetEntries(raw: unknown): DatasheetDrillEntry[] {
       age_band: (row.age_band as DatasheetDrillEntry['age_band']) || 'unknown',
       is_overdue: Boolean(row.is_overdue),
       delay_notes: row.delay_notes,
+      form_types: Array.isArray(row.form_types)
+        ? (row.form_types as string[])
+        : typeof row.form_types === 'string'
+          ? row.form_types.split(/[,|]/).map((t) => t.trim()).filter(Boolean)
+          : [],
     };
   });
 }
@@ -397,14 +402,12 @@ export function ProductionDashboard() {
     title: string,
     rows: ProductionDrillEntry[],
     subtitle?: string,
-    listHref?: string,
   ) => {
     setDetail({
       kind: 'production',
       title,
       subtitle,
       rows,
-      registerHref: listHref ?? periodRegisterHref,
     });
   };
 
@@ -414,7 +417,6 @@ export function ProductionDashboard() {
       title,
       subtitle,
       rows,
-      registerHref: '/datasheets',
     });
   };
 
@@ -973,7 +975,6 @@ export function ProductionDashboard() {
                         `Staff · ${name}`,
                         filterProductionByDoneBy(monthEntries, name),
                         'This month',
-                        registerHref({ fromDate: monthFrom, toDate: today }),
                       );
                     }}
                     items={(summary.staffLeaderboard ?? []).map((s) => ({

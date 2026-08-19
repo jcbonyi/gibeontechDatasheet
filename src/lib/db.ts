@@ -71,6 +71,7 @@ export interface DatasheetListFilters {
   q?: string;
   unallocated?: boolean;
   insurer?: string;
+  ids?: number[];
 }
 
 interface JsonStore {
@@ -820,6 +821,11 @@ function enrichDatasheetRows(rows: DbDatasheet[], users: DbUser[]): DbDatasheetL
 function filterDatasheetRows(rows: DbDatasheet[], filters: DatasheetListFilters): DbDatasheet[] {
   let result = [...rows];
 
+  if (filters.ids?.length) {
+    const idSet = new Set(filters.ids);
+    result = result.filter((r) => idSet.has(r.id));
+  }
+
   if (!filters.viewAll && filters.scopeUserId) {
     result = result.filter(
       (r) => r.created_by === filters.scopeUserId || r.assigned_to === filters.scopeUserId,
@@ -890,6 +896,7 @@ export async function listDatasheets(filters: DatasheetListFilters): Promise<DbD
     if (!client) throw new Error('Supabase client not initialized');
 
     let q = client.from('datasheets').select('*');
+    if (filters.ids?.length) q = q.in('id', filters.ids);
     if (filters.status) q = q.eq('status', filters.status);
     if (filters.claimNo) q = q.ilike('claim_no', `%${filters.claimNo}%`);
     if (filters.regNo) q = q.ilike('reg_no', `%${filters.regNo}%`);
@@ -921,6 +928,10 @@ export async function listDatasheets(filters: DatasheetListFilters): Promise<DbD
   const params: unknown[] = [];
   const conditions: string[] = [];
 
+  if (filters.ids?.length) {
+    params.push(filters.ids);
+    conditions.push(`d.id = ANY($${params.length})`);
+  }
   if (filters.status) {
     params.push(filters.status);
     conditions.push(`d.status = $${params.length}`);

@@ -4,11 +4,19 @@ import Link from 'next/link';
 import { FileText, X } from 'lucide-react';
 import { formatMoney, formatDisplayDate } from '@/lib/productionConfig';
 import { formatDelayNotesSummary } from '@/lib/opsConfig';
+import {
+  datasheetRegisterHref,
+  productionRegisterHref,
+} from '@/lib/dashboardRegisterLinks';
 import { normalizeStatus } from '@/lib/status';
 import type { DatasheetStatus } from '@/types/datasheet';
-import type { DatasheetDrillEntry, ProductionDrillEntry } from '@/lib/productionDashboardDrillDown';
+import {
+  formatDatasheetAssignment,
+  type DatasheetDrillEntry,
+  type ProductionDrillEntry,
+} from '@/lib/productionDashboardDrillDown';
 import { StatusBadge } from '@/components/StatusBadge';
-import { downloadPendingDatasheetModalPdf } from '@/utils/pendingDatasheetModalPdf';
+import { downloadDashboardDetailModalPdf } from '@/utils/pendingDatasheetModalPdf';
 
 export type DashboardDetailModalState =
   | {
@@ -16,16 +24,22 @@ export type DashboardDetailModalState =
       title: string;
       subtitle?: string;
       rows: ProductionDrillEntry[];
-      registerHref?: string;
     }
   | {
       kind: 'datasheet';
       title: string;
       subtitle?: string;
       rows: DatasheetDrillEntry[];
-      registerHref?: string;
     }
   | null;
+
+function registerHrefForDetail(detail: NonNullable<DashboardDetailModalState>): string | null {
+  if (!detail.rows.length) return null;
+  const ids = detail.rows.map((r) => r.id);
+  return detail.kind === 'production'
+    ? productionRegisterHref(ids)
+    : datasheetRegisterHref(ids);
+}
 
 export function ProductionDashboardDetailModal({
   detail,
@@ -38,10 +52,24 @@ export function ProductionDashboardDetailModal({
 
   const count = detail.rows.length;
   const isDatasheet = detail.kind === 'datasheet';
+  const registerHref = registerHrefForDetail(detail);
 
   const handleGeneratePdf = () => {
-    if (detail.kind !== 'datasheet') return;
-    downloadPendingDatasheetModalPdf(detail.title, detail.subtitle, detail.rows);
+    if (detail.kind === 'production') {
+      downloadDashboardDetailModalPdf({
+        kind: 'production',
+        title: detail.title,
+        subtitle: detail.subtitle,
+        rows: detail.rows,
+      });
+    } else {
+      downloadDashboardDetailModalPdf({
+        kind: 'datasheet',
+        title: detail.title,
+        subtitle: detail.subtitle,
+        rows: detail.rows,
+      });
+    }
   };
 
   return (
@@ -54,7 +82,7 @@ export function ProductionDashboardDetailModal({
     >
       <div
         className={`flex max-h-[88vh] w-full flex-col overflow-hidden rounded-2xl border border-white/80 bg-white shadow-xl ${
-          isDatasheet ? 'max-w-6xl' : 'max-w-4xl'
+          isDatasheet ? 'max-w-6xl' : 'max-w-5xl'
         }`}
         onClick={(e) => e.stopPropagation()}
       >
@@ -124,6 +152,7 @@ export function ProductionDashboardDetailModal({
                   <th>Serial</th>
                   <th>Claim</th>
                   <th>Reg.</th>
+                  <th>Assignment</th>
                   <th>Status</th>
                   <th>Insurer</th>
                   <th>Assessor</th>
@@ -143,6 +172,9 @@ export function ProductionDashboardDetailModal({
                       </td>
                       <td>{r.claim_no || '—'}</td>
                       <td>{r.reg_no || '—'}</td>
+                      <td className="text-slate-700">
+                        {formatDatasheetAssignment(r.form_types)}
+                      </td>
                       <td>
                         <StatusBadge status={normalizeStatus(r.status) as DatasheetStatus} />
                       </td>
@@ -172,18 +204,14 @@ export function ProductionDashboardDetailModal({
         </div>
 
         <div className="flex shrink-0 flex-wrap items-center justify-end gap-2 border-t border-slate-100 px-5 py-3">
-          {isDatasheet && count > 0 ? (
-            <button
-              type="button"
-              className="btn-secondary text-sm"
-              onClick={handleGeneratePdf}
-            >
+          {count > 0 ? (
+            <button type="button" className="btn-secondary text-sm" onClick={handleGeneratePdf}>
               <FileText className="h-4 w-4" />
               Generate PDF
             </button>
           ) : null}
-          {detail.registerHref ? (
-            <Link href={detail.registerHref} className="btn-secondary text-sm">
+          {registerHref ? (
+            <Link href={registerHref} className="btn-secondary text-sm">
               Open in register
             </Link>
           ) : null}

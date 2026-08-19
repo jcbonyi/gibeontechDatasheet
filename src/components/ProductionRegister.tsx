@@ -69,6 +69,7 @@ function ProductionRegisterInner() {
   const [status, setStatus] = useState('');
   const [paid, setPaid] = useState('');
   const [q, setQ] = useState('');
+  const [ids, setIds] = useState('');
   const [importing, setImporting] = useState(false);
   const [importMessage, setImportMessage] = useState('');
   const [filtersReady, setFiltersReady] = useState(false);
@@ -89,11 +90,13 @@ function ProductionRegisterInner() {
     setStatus(searchParams.get('status') || '');
     setPaid(searchParams.get('paid') || '');
     setQ(searchParams.get('q') || '');
+    setIds(searchParams.get('ids') || '');
     setFiltersReady(true);
   }, [searchParams]);
 
   const queryString = useCallback(() => {
     const p = new URLSearchParams();
+    if (ids) p.set('ids', ids);
     if (fromDate) p.set('fromDate', fromDate);
     if (toDate) p.set('toDate', toDate);
     if (insurerId) p.set('insurerId', insurerId);
@@ -105,7 +108,7 @@ function ProductionRegisterInner() {
     if (paid) p.set('paid', paid);
     if (q) p.set('q', q);
     return p.toString();
-  }, [doneBy, fromDate, instructedBy, insurerId, paid, q, regNo, seenBy, status, toDate]);
+  }, [doneBy, fromDate, ids, instructedBy, insurerId, paid, q, regNo, seenBy, status, toDate]);
 
   const load = useCallback(async () => {
     setLoading(true);

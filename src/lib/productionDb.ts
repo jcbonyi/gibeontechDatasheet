@@ -58,6 +58,7 @@ export interface ProductionListFilters {
   paidStatus?: string;
   q?: string;
   createdByUserId?: number;
+  ids?: number[];
 }
 
 export interface DbProductionTarget {
@@ -588,6 +589,7 @@ function matchesFilters(row: DbProductionEntry, filters: ProductionListFilters):
     return false;
   }
   if (filters.createdByUserId && row.created_by !== filters.createdByUserId) return false;
+  if (filters.ids?.length && !filters.ids.includes(row.id)) return false;
   if (filters.registrationNumber) {
     const q = filters.registrationNumber.toLowerCase();
     if (!row.registration_number.toLowerCase().includes(q)) return false;

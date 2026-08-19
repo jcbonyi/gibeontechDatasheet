@@ -29,11 +29,27 @@ export interface DatasheetDrillEntry {
   age_band: AgeBand;
   is_overdue: boolean;
   delay_notes?: unknown;
+  /** Form types (Assessment, Re-inspection, etc.) */
+  form_types?: string[] | null;
 }
 
 
 function assessorName(row: DatasheetDrillEntry): string {
   return row.assigned_to_name || row.created_by_name || 'Unassigned';
+}
+
+export function formatDatasheetAssignment(
+  formTypes: string | string[] | null | undefined,
+): string {
+  if (Array.isArray(formTypes) && formTypes.length) return formTypes.join(' · ');
+  if (typeof formTypes === 'string' && formTypes.trim()) {
+    return formTypes
+      .split(/[,|]/)
+      .map((t) => t.trim())
+      .filter(Boolean)
+      .join(' · ');
+  }
+  return '—';
 }
 
 export function filterProductionByDate(entries: ProductionDrillEntry[], isoDate: string) {

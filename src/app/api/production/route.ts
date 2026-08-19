@@ -15,7 +15,7 @@ import {
 import { PRODUCTION_STATUSES, normalizeAssignment, normalizePaidStatus, type ProductionStatus } from '@/lib/productionConfig';
 import { buildProductionSummary } from '@/lib/productionAnalytics';
 import { issueMatchingDatasheetsFromProduction } from '@/lib/syncDatasheetFromProduction';
-
+import { parseIdListParam } from '@/lib/dashboardRegisterLinks';
 
 function parseFilters(req: NextRequest) {
   const { searchParams } = new URL(req.url);
@@ -36,6 +36,7 @@ function parseFilters(req: NextRequest) {
     status: searchParams.get('status') || undefined,
     paidStatus: searchParams.get('paid') || undefined,
     q: searchParams.get('q') || undefined,
+    ids: parseIdListParam(searchParams.get('ids')),
   };
 }
 

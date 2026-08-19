@@ -102,6 +102,8 @@ export function DatasheetRegister() {
   const [toDate, setToDate] = useState('');
   const initialStatus = searchParams.get('status') || '';
   const initialUnallocated = searchParams.get('unallocated') === '1';
+  const initialIds = searchParams.get('ids') || '';
+  const initialOpenOnly = searchParams.get('openOnly');
   const [status, setStatus] = useState<StatusFilter>(
     DATASHEET_STATUSES.includes(initialStatus as DatasheetStatus)
       ? (initialStatus as DatasheetStatus)
@@ -110,7 +112,14 @@ export function DatasheetRegister() {
   const [scope, setScope] = useState<ScopeFilter>(initialUnallocated ? 'unallocated' : '');
   const [selectedView, setSelectedView] = useState<SavedViewId | ''>('');
   const [view, setView] = useState<ViewMode>('board');
-  const [openOnly, setOpenOnly] = useState(!initialStatus && !initialUnallocated);
+  const [openOnly, setOpenOnly] = useState(
+    initialIds
+      ? false
+      : initialOpenOnly === '0'
+        ? false
+        : !initialStatus && !initialUnallocated,
+  );
+  const [idsFilter, setIdsFilter] = useState(initialIds);
   const [assigningId, setAssigningId] = useState<number | null>(null);
   const [assignTo, setAssignTo] = useState('');
   const [inlineAssign, setInlineAssign] = useState<Record<number, string>>({});
@@ -128,6 +137,7 @@ export function DatasheetRegister() {
 
   const filterParams = useCallback(() => {
     const params = new URLSearchParams();
+    if (idsFilter) params.set('ids', idsFilter);
     if (q) params.set('q', q);
     if (claimNo) params.set('claimNo', claimNo);
     if (regNo) params.set('regNo', regNo);
@@ -137,7 +147,17 @@ export function DatasheetRegister() {
     if (toDate) params.set('toDate', toDate);
     if (scope === 'unallocated') params.set('unallocated', '1');
     return params;
-  }, [assessorId, claimNo, fromDate, q, regNo, scope, status, toDate]);
+  }, [assessorId, claimNo, fromDate, idsFilter, q, regNo, scope, status, toDate]);
+
+  useEffect(() => {
+    setIdsFilter(searchParams.get('ids') || '');
+    if (searchParams.get('ids')) {
+      setOpenOnly(false);
+      setStatus('');
+      setScope('');
+      setSelectedView('');
+    }
+  }, [searchParams]);
 
   const load = useCallback(async () => {
     setLoading(true);
