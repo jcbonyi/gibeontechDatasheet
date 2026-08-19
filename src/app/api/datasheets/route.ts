@@ -14,6 +14,7 @@ import { createDefaultFormData, type DatasheetStatus } from '@/types/datasheet';
 import { toListItem } from '@/lib/tracking';
 import { extractDenormalizedFields } from '@/lib/extractFields';
 import { ensureReviewTasksAssignedToFrancis } from '@/lib/reviewAssignee';
+import { shouldAutoIssueDatasheet } from '@/lib/syncDatasheetFromProduction';
 
 export async function GET(req: NextRequest) {
   try {
@@ -55,7 +56,7 @@ export async function POST(req: NextRequest) {
 
     const body = await req.json();
     let formData = (body.formData || createDefaultFormData()) as Record<string, unknown>;
-    const status = (
+    let status = (
       body.status === 'submitted'
         ? 'submitted'
         : body.status === 'pending_review'
@@ -65,6 +66,14 @@ export async function POST(req: NextRequest) {
             : 'instructed'
     ) as DatasheetStatus;
     formData = applySeenBy(formData, user.name, user.role);
+    const previewDenorm = extractDenormalizedFields(formData);
+    const autoIssued = await shouldAutoIssueDatasheet({
+      status,
+      registrationNumber: previewDenorm.reg_no,
+      formTypes: previewDenorm.form_types,
+    });
+    if (autoIssued) status = 'report_issued';
+    const reviewedAt = autoIssued ? new Date().toISOString() : null;
 
     let datasheet = null;
     for (let attempt = 0; attempt < 5; attempt++) {
@@ -90,8 +99,8 @@ export async function POST(req: NextRequest) {
           cancel_reason: null,
           query_reason: null,
           delay_notes: [],
-          reviewed_by: null,
-          reviewed_at: null,
+          reviewed_by: autoIssued ? user.id : null,
+          reviewed_at: reviewedAt,
           search_text: denorm.search_text,
         });
         break;
@@ -104,7 +113,10 @@ export async function POST(req: NextRequest) {
       throw new Error('Failed to allocate a unique serial number');
     }
 
-    await logDatasheetAudit(datasheet.id, user.id, user.name, 'created', { status });
+    await logDatasheetAudit(datasheet.id, user.id, user.name, 'created', {
+      status,
+      autoFromProduction: autoIssued || undefined,
+    });
 
     return NextResponse.json({ datasheet }, { status: 201 });
   } catch (err) {

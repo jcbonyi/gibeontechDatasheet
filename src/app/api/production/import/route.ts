@@ -12,6 +12,7 @@ import {
   parseProductionWorkbook,
   toEntryInput,
 } from '@/lib/productionImport';
+import { issueMatchingDatasheetsFromProduction } from '@/lib/syncDatasheetFromProduction';
 
 export async function GET() {
   try {
@@ -90,11 +91,29 @@ export async function POST(req: NextRequest) {
           });
         }
 
-        await createProductionEntry(
+        const entry = await createProductionEntry(
           toEntryInput(row, insurer.id, done?.id ?? null, seen?.id ?? null),
           user.id,
         );
         imported += 1;
+        try {
+          await issueMatchingDatasheetsFromProduction(
+            {
+              registrationNumber: entry.registration_number,
+              assignment: entry.assignment,
+              productionId: entry.id,
+              status: entry.status,
+            },
+            { id: user.id, name: user.name },
+          );
+        } catch (syncErr) {
+          warnings.push({
+            row: row.rowNumber,
+            message: `Imported, but datasheet auto-issue failed: ${
+              syncErr instanceof Error ? syncErr.message : 'unknown error'
+            }`,
+          });
+        }
       } catch (err) {
         errors.push({
           row: row.rowNumber,

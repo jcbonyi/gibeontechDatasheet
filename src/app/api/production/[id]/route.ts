@@ -13,6 +13,7 @@ import {
   updateProductionEntry,
 } from '@/lib/productionDb';
 import { PRODUCTION_STATUSES, normalizeAssignment, normalizePaidStatus, type ProductionStatus } from '@/lib/productionConfig';
+import { issueMatchingDatasheetsFromProduction } from '@/lib/syncDatasheetFromProduction';
 
 export async function GET(
   req: NextRequest,
@@ -136,6 +137,23 @@ export async function PATCH(
       },
       user.id,
     );
+
+    if (!entry) return NextResponse.json({ message: 'Not found' }, { status: 404 });
+
+    try {
+      await issueMatchingDatasheetsFromProduction(
+        {
+          registrationNumber: entry.registration_number,
+          assignment: entry.assignment,
+          productionId: entry.id,
+          status: entry.status,
+        },
+        { id: user.id, name: user.name },
+      );
+    } catch (syncErr) {
+      console.error('Datasheet auto-issue from production failed', syncErr);
+    }
+
     return NextResponse.json({ entry });
   } catch (err) {
     return handleRouteError(err, 'PATCH /api/production/[id]');

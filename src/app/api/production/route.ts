@@ -14,6 +14,7 @@ import {
 } from '@/lib/productionDb';
 import { PRODUCTION_STATUSES, normalizeAssignment, normalizePaidStatus, type ProductionStatus } from '@/lib/productionConfig';
 import { buildProductionSummary } from '@/lib/productionAnalytics';
+import { issueMatchingDatasheetsFromProduction } from '@/lib/syncDatasheetFromProduction';
 
 
 function parseFilters(req: NextRequest) {
@@ -114,6 +115,20 @@ export async function POST(req: NextRequest) {
       title: 'New production entered',
       body: `${entry.registration_number} · ${entry.amount} · ${entry.production_date}`,
     });
+
+    try {
+      await issueMatchingDatasheetsFromProduction(
+        {
+          registrationNumber: entry.registration_number,
+          assignment: entry.assignment,
+          productionId: entry.id,
+          status: entry.status,
+        },
+        { id: user.id, name: user.name },
+      );
+    } catch (syncErr) {
+      console.error('Datasheet auto-issue from production failed', syncErr);
+    }
 
     // Target checks
     const all = await listProductionEntries({});
