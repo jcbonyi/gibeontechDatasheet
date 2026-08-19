@@ -3,8 +3,10 @@ import {
   logDatasheetAudit,
   updateDatasheetRecord,
   type DbDatasheet,
+  type DbDatasheetListRow,
 } from '@/lib/db';
-import { listProductionEntries, createNotification } from '@/lib/productionDb';
+import { extractDenormalizedFields } from '@/lib/extractFields';
+import { listProductionEntries, createNotification, type DbProductionEntry } from '@/lib/productionDb';
 import { isOpenStatus, isTerminalStatus, STATUS_LABELS } from '@/lib/status';
 import type { DatasheetStatus } from '@/types/datasheet';
 
@@ -20,14 +22,16 @@ export function normalizeRegNoKey(raw: string | null | undefined): string {
  * "Re-inspection" ≈ "Re-Inspection", "Pre-theft" ≈ "Pre-Theft".
  */
 export function normalizeJobTypeKey(raw: string | null | undefined): string {
-  const compact = (raw || '')
+  let compact = (raw || '')
     .toLowerCase()
-    .replace(/[\s._-]+/g, '');
+    .replace(/[\s._-]+/g, '')
+    .replace(/reports?$/, '');
   if (!compact) return '';
   const aliases: Record<string, string> = {
     assessment: 'assessment',
     assessments: 'assessment',
     valuation: 'assessment',
+    motorassessment: 'assessment',
     reinspection: 'reinspection',
     reinspections: 'reinspection',
     reinspect: 'reinspection',
@@ -35,13 +39,23 @@ export function normalizeJobTypeKey(raw: string | null | undefined): string {
     technical: 'technical',
     inspection: 'inspection',
     supplementary: 'supplementary',
+    supplement: 'supplementary',
   };
-  return aliases[compact] || compact;
+  if (aliases[compact]) return aliases[compact];
+  const ordered = [
+    'reinspection',
+    'pretheft',
+    'supplementary',
+    'assessment',
+    'technical',
+    'inspection',
+  ];
+  return ordered.find((k) => compact.includes(k)) || compact;
 }
 
 export function parseFormTypeList(raw: string | string[] | null | undefined): string[] {
   if (!raw) return [];
-  const list = Array.isArray(raw) ? raw : raw.split(/[,|]/);
+  const list = Array.isArray(raw) ? raw : String(raw).split(/[,|]/);
   return list.map((t) => t.trim()).filter(Boolean);
 }
 
@@ -63,8 +77,46 @@ export function registrationNumbersMatch(
   return Boolean(ka) && ka === kb;
 }
 
-function isCompletedProduction(status: string | null | undefined): boolean {
-  return (status || 'completed') === 'completed';
+function isUsableProduction(status: string | null | undefined): boolean {
+  return (status || 'completed') !== 'cancelled';
+}
+
+function datasheetMatchFields(row: Pick<DbDatasheet, 'form_data' | 'reg_no' | 'form_types' | 'serial_no'>) {
+  const denorm = extractDenormalizedFields(row.form_data, row.serial_no);
+  const formTypes = denorm.form_types || row.form_types || null;
+  const regNo = denorm.reg_no || row.reg_no || null;
+  return { regNo, formTypes };
+}
+
+function productionIndex(entries: DbProductionEntry[]) {
+  const byKey = new Map<string, DbProductionEntry[]>();
+  for (const e of entries) {
+    if (!isUsableProduction(e.status)) continue;
+    const regKey = normalizeRegNoKey(e.registration_number);
+    const typeKey = normalizeJobTypeKey(e.assignment);
+    if (!regKey || !typeKey) continue;
+    const key = `${regKey}::${typeKey}`;
+    const list = byKey.get(key) || [];
+    list.push(e);
+    byKey.set(key, list);
+  }
+  return byKey;
+}
+
+function matchingProduction(
+  index: Map<string, DbProductionEntry[]>,
+  regNo: string | null,
+  formTypes: string | string[] | null,
+): DbProductionEntry | null {
+  const regKey = normalizeRegNoKey(regNo);
+  if (!regKey) return null;
+  for (const type of parseFormTypeList(formTypes)) {
+    const typeKey = normalizeJobTypeKey(type);
+    if (!typeKey) continue;
+    const hits = index.get(`${regKey}::${typeKey}`);
+    if (hits?.length) return hits[0];
+  }
+  return null;
 }
 
 /**
@@ -79,18 +131,20 @@ export async function issueMatchingDatasheetsFromProduction(
   },
   actor: SyncActor,
 ): Promise<number[]> {
-  if (!isCompletedProduction(input.status)) return [];
+  if (!isUsableProduction(input.status)) return [];
   const regKey = normalizeRegNoKey(input.registrationNumber);
   const assignmentKey = normalizeJobTypeKey(input.assignment);
   if (!regKey || !assignmentKey) return [];
 
   const sheets = await listDatasheets({ viewAll: true });
-  const matches = sheets.filter(
-    (row) =>
-      isOpenStatus(row.status) &&
-      registrationNumbersMatch(row.reg_no, input.registrationNumber) &&
-      formTypesMatchAssignment(row.form_types, input.assignment),
-  );
+  const matches = sheets.filter((row) => {
+    if (!isOpenStatus(row.status)) return false;
+    const { regNo, formTypes } = datasheetMatchFields(row);
+    return (
+      registrationNumbersMatch(regNo, input.registrationNumber) &&
+      formTypesMatchAssignment(formTypes, input.assignment)
+    );
+  });
 
   const issuedIds: number[] = [];
   for (const row of matches) {
@@ -98,10 +152,54 @@ export async function issueMatchingDatasheetsFromProduction(
       productionId: input.productionId ?? null,
       registrationNumber: input.registrationNumber || '',
       assignment: input.assignment || '',
+      notify: true,
     });
     if (ok) issuedIds.push(row.id);
   }
   return issuedIds;
+}
+
+/**
+ * Apply Report Issued to every open datasheet that already has a matching
+ * production job. Used when the datasheet module loads so existing work is updated.
+ */
+export async function applyProductionIssuedToDatasheets<T extends DbDatasheetListRow>(
+  sheets: T[],
+  actor: SyncActor,
+): Promise<T[]> {
+  const open = sheets.filter((row) => isOpenStatus(row.status));
+  if (!open.length) return sheets;
+
+  const entries = await listProductionEntries({});
+  const index = productionIndex(entries);
+  if (!index.size) return sheets;
+
+  const issued = new Set<number>();
+  for (const row of open) {
+    const { regNo, formTypes } = datasheetMatchFields(row);
+    const prod = matchingProduction(index, regNo, formTypes);
+    if (!prod) continue;
+    const ok = await markDatasheetReportIssued(row, actor, {
+      productionId: prod.id,
+      registrationNumber: prod.registration_number,
+      assignment: prod.assignment || '',
+      notify: false,
+    });
+    if (ok) issued.add(row.id);
+  }
+
+  if (!issued.size) return sheets;
+
+  return sheets.map((row) =>
+    issued.has(row.id)
+      ? {
+          ...row,
+          status: 'report_issued' as DatasheetStatus,
+          updated_by: actor.id,
+          reviewed_by: actor.id,
+        }
+      : row,
+  );
 }
 
 /** True if an active production entry already covers this datasheet. */
@@ -113,12 +211,8 @@ export async function hasMatchingActiveProduction(
   if (!regKey || parseFormTypeList(formTypes).length === 0) return false;
 
   const entries = await listProductionEntries({});
-  return entries.some(
-    (e) =>
-      isCompletedProduction(e.status) &&
-      registrationNumbersMatch(e.registration_number, registrationNumber) &&
-      formTypesMatchAssignment(formTypes, e.assignment),
-  );
+  const index = productionIndex(entries);
+  return Boolean(matchingProduction(index, registrationNumber || null, formTypes || null));
 }
 
 export async function shouldAutoIssueDatasheet(input: {
@@ -139,7 +233,12 @@ export async function shouldAutoIssueDatasheet(input: {
 async function markDatasheetReportIssued(
   row: Pick<DbDatasheet, 'id' | 'status' | 'serial_no' | 'reg_no'>,
   actor: SyncActor,
-  meta: { productionId: number | null; registrationNumber: string; assignment: string },
+  meta: {
+    productionId: number | null;
+    registrationNumber: string;
+    assignment: string;
+    notify: boolean;
+  },
 ): Promise<boolean> {
   const from = row.status as DatasheetStatus;
   if (from === 'report_issued' || from === 'closed' || from === 'cancelled') return false;
@@ -161,11 +260,13 @@ async function markDatasheetReportIssued(
     assignment: meta.assignment,
   });
 
-  await createNotification({
-    type: 'datasheet_report_issued',
-    title: 'Datasheet marked Report Issued',
-    body: `${row.serial_no} · ${meta.registrationNumber} · ${meta.assignment} (matched production)`,
-  });
+  if (meta.notify) {
+    await createNotification({
+      type: 'datasheet_report_issued',
+      title: 'Datasheet marked Report Issued',
+      body: `${row.serial_no} · ${meta.registrationNumber} · ${meta.assignment} (matched production)`,
+    });
+  }
 
   return true;
 }

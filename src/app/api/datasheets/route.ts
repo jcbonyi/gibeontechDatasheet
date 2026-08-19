@@ -14,7 +14,7 @@ import { createDefaultFormData, type DatasheetStatus } from '@/types/datasheet';
 import { toListItem } from '@/lib/tracking';
 import { extractDenormalizedFields } from '@/lib/extractFields';
 import { ensureReviewTasksAssignedToFrancis } from '@/lib/reviewAssignee';
-import { shouldAutoIssueDatasheet } from '@/lib/syncDatasheetFromProduction';
+import { applyProductionIssuedToDatasheets, shouldAutoIssueDatasheet } from '@/lib/syncDatasheetFromProduction';
 
 export async function GET(req: NextRequest) {
   try {
@@ -25,7 +25,7 @@ export async function GET(req: NextRequest) {
     await ensureReviewTasksAssignedToFrancis();
 
     const { searchParams } = new URL(req.url);
-    const datasheets = await listDatasheets({
+    let datasheets = await listDatasheets({
       status: searchParams.get('status') || undefined,
       claimNo: searchParams.get('claimNo') || undefined,
       regNo: searchParams.get('regNo') || undefined,
@@ -40,6 +40,15 @@ export async function GET(req: NextRequest) {
       viewAll: canViewAllDatasheets(user.role),
       scopeUserId: canViewAllDatasheets(user.role) ? undefined : user.id,
     });
+
+    try {
+      datasheets = await applyProductionIssuedToDatasheets(datasheets, {
+        id: user.id,
+        name: user.name,
+      });
+    } catch (syncErr) {
+      console.error('Datasheet production auto-issue on list failed', syncErr);
+    }
 
     return NextResponse.json({
       datasheets: datasheets.map(toListItem),

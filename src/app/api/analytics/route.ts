@@ -4,6 +4,7 @@ import { getAuthUser, unauthorized } from '@/lib/api';
 import { handleRouteError } from '@/lib/routeErrors';
 import { canViewAllDatasheets } from '@/lib/permissions';
 import { buildAnalyticsSummary, toListItem } from '@/lib/tracking';
+import { applyProductionIssuedToDatasheets } from '@/lib/syncDatasheetFromProduction';
 
 export async function GET(req: NextRequest) {
   try {
@@ -19,7 +20,7 @@ export async function GET(req: NextRequest) {
     const status = searchParams.get('status') || undefined;
     const insurer = searchParams.get('insurer') || undefined;
 
-    const rows = await listDatasheets({
+    let rows = await listDatasheets({
       status,
       assessorId,
       fromDate,
@@ -28,6 +29,15 @@ export async function GET(req: NextRequest) {
       viewAll: canViewAllDatasheets(user.role),
       scopeUserId: canViewAllDatasheets(user.role) ? undefined : user.id,
     });
+
+    try {
+      rows = await applyProductionIssuedToDatasheets(rows, {
+        id: user.id,
+        name: user.name,
+      });
+    } catch (syncErr) {
+      console.error('Datasheet production auto-issue on analytics failed', syncErr);
+    }
 
     const items = rows.map(toListItem);
     const audits = await listAllAuditsForDatasheets(items.map((r) => r.id));

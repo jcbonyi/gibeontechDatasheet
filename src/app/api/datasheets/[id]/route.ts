@@ -18,7 +18,7 @@ import {
 import type { DatasheetStatus } from '@/types/datasheet';
 import { extractDenormalizedFields } from '@/lib/extractFields';
 import { assignToFrancisIfReview } from '@/lib/reviewAssignee';
-import { shouldAutoIssueDatasheet } from '@/lib/syncDatasheetFromProduction';
+import { applyProductionIssuedToDatasheets, shouldAutoIssueDatasheet } from '@/lib/syncDatasheetFromProduction';
 
 export async function GET(
   req: NextRequest,
@@ -29,11 +29,21 @@ export async function GET(
     if (!user) return unauthorized();
 
     const { id } = await params;
-    const datasheet = await getDatasheetById(Number(id));
+    let datasheet = await getDatasheetById(Number(id));
     if (!datasheet) {
       return NextResponse.json({ message: 'Not found' }, { status: 404 });
     }
     if (!canViewDatasheet(user, datasheet)) return forbidden();
+
+    try {
+      const synced = await applyProductionIssuedToDatasheets(
+        [datasheet],
+        { id: user.id, name: user.name },
+      );
+      datasheet = synced[0] || datasheet;
+    } catch (syncErr) {
+      console.error('Datasheet production auto-issue on open failed', syncErr);
+    }
 
     const form = datasheet.form_data as { signOff?: { seenBy?: string } } | null;
     const seenByName = form?.signOff?.seenBy || null;
