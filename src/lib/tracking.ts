@@ -77,7 +77,7 @@ export interface AnalyticsSummary {
     avgAgeDays: number | null;
     slaPct: number | null;
   }[];
-  byInsurer: { name: string; count: number; overdue: number; slaPct: number | null }[];
+  byInsurer: { name: string; count: number; open: number; overdue: number; slaPct: number | null }[];
   byFormType: { type: string; count: number }[];
   volumeByMonth: { month: string; created: number; approved: number }[];
   agingQueue: {
@@ -274,7 +274,7 @@ export function buildAnalyticsSummary(
   >();
   const byInsurerMap = new Map<
     string,
-    { count: number; overdue: number; closedWithAge: number[]; withinSla: number }
+    { count: number; open: number; overdue: number; closedWithAge: number[]; withinSla: number }
   >();
   const byFormTypeMap = new Map<string, number>();
   const volumeMap = new Map<string, { created: number; approved: number }>();
@@ -342,11 +342,13 @@ export function buildAnalyticsSummary(
     const insurer = row.client_insurer || 'Unknown';
     const ins = byInsurerMap.get(insurer) || {
       count: 0,
+      open: 0,
       overdue: 0,
       closedWithAge: [],
       withinSla: 0,
     };
     ins.count += 1;
+    if (isOpenStatus(row.status)) ins.open += 1;
     if (row.is_overdue) ins.overdue += 1;
     if (
       (row.status === 'report_issued' || row.status === 'closed') &&
@@ -456,13 +458,13 @@ export function buildAnalyticsSummary(
       .map(([name, v]) => ({
         name,
         count: v.count,
+        open: v.open,
         overdue: v.overdue,
         slaPct: v.closedWithAge.length
           ? Math.round((v.withinSla / v.closedWithAge.length) * 1000) / 10
           : null,
       }))
-      .sort((a, b) => b.count - a.count)
-      .slice(0, 12),
+      .sort((a, b) => b.open - a.open || b.count - a.count),
     byFormType: [...byFormTypeMap.entries()]
       .map(([type, count]) => ({ type, count }))
       .sort((a, b) => b.count - a.count),

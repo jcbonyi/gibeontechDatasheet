@@ -746,7 +746,7 @@ export function AnalyticsDashboard() {
             <div className="section-card">
               <h3 className="mb-4 text-sm font-semibold text-brand-800">Insurers · volume &amp; SLA</h3>
               <SimpleHorizontalBars
-                items={summary.byInsurer.map((i) => ({
+                items={summary.byInsurer.slice(0, 12).map((i) => ({
                   label: `${i.name}${i.slaPct != null ? ` · ${i.slaPct}% SLA` : ''}${
                     i.overdue > 0 ? ` · ${i.overdue} overdue` : ''
                   }`,

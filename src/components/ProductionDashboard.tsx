@@ -24,6 +24,7 @@ import {
   type ChartPeriod,
   type ProductionSummary,
 } from '@/lib/productionAnalytics';
+import type { AnalyticsSummary } from '@/lib/tracking';
 
 function isoToday(): string {
   const d = new Date();
@@ -175,16 +176,23 @@ export function ProductionDashboard() {
   const [chartsLoading, setChartsLoading] = useState(true);
   const [chartsError, setChartsError] = useState<string | null>(null);
   const [chartPeriod, setChartPeriod] = useState<ChartPeriod>('thisMonth');
+  const [datasheetPending, setDatasheetPending] = useState<AnalyticsSummary | null>(null);
 
   const chartRange = useMemo(() => resolveChartPeriodRange(chartPeriod), [chartPeriod]);
 
   const loadOverview = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch('/api/production/analytics');
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error || 'Failed to load KPIs');
-      setSummary(data.summary || null);
+      const [prodRes, dsRes] = await Promise.all([
+        fetch('/api/production/analytics'),
+        fetch('/api/analytics'),
+      ]);
+      const prodData = await prodRes.json().catch(() => ({}));
+      if (!prodRes.ok) throw new Error(prodData.error || 'Failed to load KPIs');
+      setSummary(prodData.summary || null);
+
+      const dsData = await dsRes.json().catch(() => ({}));
+      setDatasheetPending(dsRes.ok ? dsData.summary || null : null);
     } catch {
       setSummary(null);
     } finally {
@@ -255,6 +263,20 @@ export function ProductionDashboard() {
       ? chartSummary.kpis.topStaffUserId
       : k?.topStaffUserId;
 
+  const pendingByIndividual = useMemo(
+    () =>
+      (datasheetPending?.byAssessor ?? [])
+        .filter((a) => a.open > 0)
+        .map((a) => ({ name: a.name, jobs: a.open })),
+    [datasheetPending],
+  );
+  const pendingByInsurer = useMemo(
+    () =>
+      (datasheetPending?.byInsurer ?? [])
+        .filter((i) => i.open > 0)
+        .map((i) => ({ name: i.name, jobs: i.open })),
+    [datasheetPending],
+  );
   const exportBase = `/api/production/export?fromDate=${chartRange.fromDate}&toDate=${chartRange.toDate}&pack=dashboard`;
   const periodRegisterHref = registerHref({
     fromDate: chartRange.fromDate,
@@ -467,6 +489,38 @@ export function ProductionDashboard() {
               </div>
             </div>
           )}
+
+          <h3 className="mb-3 text-xs font-semibold uppercase tracking-wider text-slate-500">
+            Datasheet pending
+          </h3>
+          <div className="mb-6 grid gap-4 lg:grid-cols-2">
+            <ChartPanel
+              title="Pending By Individual"
+              count={pendingByIndividual.length}
+              hint="Open datasheet tasks by assessor"
+            >
+              <SimpleHorizontalBars
+                maxHeight={420}
+                items={pendingByIndividual.map((i) => ({
+                  label: i.name,
+                  value: i.jobs,
+                }))}
+              />
+            </ChartPanel>
+            <ChartPanel
+              title="Pending By Insurer"
+              count={pendingByInsurer.length}
+              hint="Open datasheet tasks by insurer"
+            >
+              <SimpleHorizontalBars
+                maxHeight={420}
+                items={pendingByInsurer.map((i) => ({
+                  label: i.name,
+                  value: i.jobs,
+                }))}
+              />
+            </ChartPanel>
+          </div>
 
           <div className="section-card mb-4 !p-4 sm:!p-5">
             <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
