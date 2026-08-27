@@ -102,6 +102,7 @@ function mapDatasheetEntries(raw: unknown): DatasheetDrillEntry[] {
         : typeof row.form_types === 'string'
           ? row.form_types.split(/[,|]/).map((t) => t.trim()).filter(Boolean)
           : [],
+      repairer: (row.repairer as string) || null,
     };
   });
 }

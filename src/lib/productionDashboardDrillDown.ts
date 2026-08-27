@@ -31,6 +31,8 @@ export interface DatasheetDrillEntry {
   delay_notes?: unknown;
   /** Form types (Assessment, Re-inspection, etc.) */
   form_types?: string[] | null;
+  /** Repairer / contact person from datasheet sign-off. */
+  repairer?: string | null;
 }
 
 

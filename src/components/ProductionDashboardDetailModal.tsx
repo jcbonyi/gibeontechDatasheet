@@ -156,6 +156,7 @@ export function ProductionDashboardDetailModal({
                   <th>Status</th>
                   <th>Insurer</th>
                   <th>Assessor</th>
+                  <th>Repairer</th>
                   <th>Age</th>
                   <th className="min-w-[12rem]">Delay note</th>
                 </tr>
@@ -180,6 +181,9 @@ export function ProductionDashboardDetailModal({
                       </td>
                       <td>{r.client_insurer || '—'}</td>
                       <td>{r.assigned_to_name || r.created_by_name || '—'}</td>
+                      <td className="max-w-[10rem] text-xs text-slate-700" title={r.repairer || undefined}>
+                        {r.repairer || '—'}
+                      </td>
                       <td className="whitespace-nowrap">
                         {r.age_days != null ? (
                           <span className={r.is_overdue ? 'font-semibold text-red-700' : ''}>

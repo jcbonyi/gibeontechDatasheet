@@ -27,6 +27,8 @@ export interface TrackingFields {
   age_days: number | null;
   age_band: AgeBand;
   is_overdue: boolean;
+  /** Repairer / contact person from sign-off. */
+  repairer: string | null;
 }
 
 export interface DatasheetListItem
@@ -179,6 +181,16 @@ export function extractTrackingFields(
   const formTypesFromCol = row?.form_types
     ? (row.form_types.split(',').filter(Boolean) as FormType[])
     : [];
+  const signOff = (formData?.signOff || {}) as {
+    repairerContactPerson?: string;
+    repairerPhone?: string;
+  };
+  const repairerName = signOff.repairerContactPerson?.trim() || '';
+  const repairerPhone = signOff.repairerPhone?.trim() || '';
+  const repairer =
+    repairerName && repairerPhone
+      ? `${repairerName} · ${repairerPhone}`
+      : repairerName || repairerPhone || null;
 
   return {
     date_of_instruction: dateOfInstruction,
@@ -191,6 +203,7 @@ export function extractTrackingFields(
     age_days: ageDays,
     age_band: ageBandFromDays(ageDays),
     is_overdue: open && ageDays !== null && ageDays > SLA_DAYS,
+    repairer,
   };
 }
 
