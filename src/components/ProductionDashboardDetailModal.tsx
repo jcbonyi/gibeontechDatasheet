@@ -12,6 +12,7 @@ import { normalizeStatus } from '@/lib/status';
 import type { DatasheetStatus } from '@/types/datasheet';
 import {
   formatDatasheetAssignment,
+  sumProductionByAssignment,
   type DatasheetDrillEntry,
   type ProductionDrillEntry,
 } from '@/lib/productionDashboardDrillDown';
@@ -53,6 +54,10 @@ export function ProductionDashboardDetailModal({
   const count = detail.rows.length;
   const isDatasheet = detail.kind === 'datasheet';
   const registerHref = registerHrefForDetail(detail);
+  const productionTotals =
+    detail.kind === 'production' && detail.rows.length
+      ? sumProductionByAssignment(detail.rows)
+      : null;
 
   const handleGeneratePdf = () => {
     if (detail.kind === 'production') {
@@ -96,6 +101,11 @@ export function ProductionDashboardDetailModal({
             ) : null}
             <p className="mt-1 text-xs font-semibold text-brand-700">
               {count} {count === 1 ? 'record' : 'records'}
+              {productionTotals ? (
+                <span className="ml-2 font-bold text-slate-800">
+                  · {formatMoney(productionTotals.grandTotal)}
+                </span>
+              ) : null}
             </p>
           </div>
           <button
@@ -112,39 +122,80 @@ export function ProductionDashboardDetailModal({
           {count === 0 ? (
             <p className="py-8 text-center text-sm text-slate-500">No matching records.</p>
           ) : detail.kind === 'production' ? (
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th>Date</th>
-                  <th>Reg.</th>
-                  <th>Insurer</th>
-                  <th>Assignment</th>
-                  <th>Done by</th>
-                  <th>Amount</th>
-                </tr>
-              </thead>
-              <tbody>
-                {detail.rows.map((r) => (
-                  <tr key={r.id}>
-                    <td className="whitespace-nowrap text-slate-600">
-                      {formatDisplayDate(r.production_date.slice(0, 10))}
-                    </td>
-                    <td className="font-medium text-brand-800">
-                      <Link
-                        href={`/production/entries/${r.id}`}
-                        className="hover:text-brand-600"
-                      >
-                        {r.registration_number}
-                      </Link>
-                    </td>
-                    <td>{r.insurer_name || '—'}</td>
-                    <td>{r.assignment || '—'}</td>
-                    <td>{r.done_by_name || '—'}</td>
-                    <td className="font-semibold tabular-nums">{formatMoney(r.amount)}</td>
+            <div className="space-y-5">
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>Date</th>
+                    <th>Reg.</th>
+                    <th>Insurer</th>
+                    <th>Assignment</th>
+                    <th>Done by</th>
+                    <th>Amount</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {detail.rows.map((r) => (
+                    <tr key={r.id}>
+                      <td className="whitespace-nowrap text-slate-600">
+                        {formatDisplayDate(r.production_date.slice(0, 10))}
+                      </td>
+                      <td className="font-medium text-brand-800">
+                        <Link
+                          href={`/production/entries/${r.id}`}
+                          className="hover:text-brand-600"
+                        >
+                          {r.registration_number}
+                        </Link>
+                      </td>
+                      <td>{r.insurer_name || '—'}</td>
+                      <td>{r.assignment || '—'}</td>
+                      <td>{r.done_by_name || '—'}</td>
+                      <td className="font-semibold tabular-nums">{formatMoney(r.amount)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+
+              {productionTotals ? (
+                <div className="rounded-xl border border-brand-100 bg-brand-50/40 p-4">
+                  <h3 className="text-sm font-semibold text-brand-800">Totals by assignment</h3>
+                  <table className="mt-3 w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-brand-100 text-left text-xs uppercase tracking-wide text-slate-500">
+                        <th className="pb-2 pr-3 font-semibold">Assignment</th>
+                        <th className="pb-2 pr-3 text-right font-semibold">Jobs</th>
+                        <th className="pb-2 text-right font-semibold">Amount</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {productionTotals.totals.map((t) => (
+                        <tr key={t.name} className="border-b border-white/80">
+                          <td className="py-2 pr-3 font-medium text-slate-800">
+                            Total {t.name}
+                          </td>
+                          <td className="py-2 pr-3 text-right tabular-nums text-slate-600">
+                            {t.jobs}
+                          </td>
+                          <td className="py-2 text-right font-semibold tabular-nums text-slate-900">
+                            {formatMoney(t.amount)}
+                          </td>
+                        </tr>
+                      ))}
+                      <tr>
+                        <td className="pt-3 pr-3 text-sm font-bold text-brand-800">Modal total</td>
+                        <td className="pt-3 pr-3 text-right text-sm font-bold tabular-nums text-brand-800">
+                          {count}
+                        </td>
+                        <td className="pt-3 text-right text-sm font-bold tabular-nums text-brand-800">
+                          {formatMoney(productionTotals.grandTotal)}
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              ) : null}
+            </div>
           ) : (
             <table className="data-table">
               <thead>
@@ -181,7 +232,10 @@ export function ProductionDashboardDetailModal({
                       </td>
                       <td>{r.client_insurer || '—'}</td>
                       <td>{r.assigned_to_name || r.created_by_name || '—'}</td>
-                      <td className="max-w-[10rem] text-xs text-slate-700" title={r.repairer || undefined}>
+                      <td
+                        className="max-w-[10rem] text-xs text-slate-700"
+                        title={r.repairer || undefined}
+                      >
                         {r.repairer || '—'}
                       </td>
                       <td className="whitespace-nowrap">

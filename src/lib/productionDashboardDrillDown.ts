@@ -1,6 +1,11 @@
 import type { AgeBand } from '@/lib/tracking';
 import { isOpenStatus } from '@/lib/status';
-import { namesMatch } from '@/lib/nameNormalize';
+import {
+  namesMatch,
+  normalizeDisplayName,
+  normalizeNameKey,
+  preferDisplayName,
+} from '@/lib/nameNormalize';
 
 export interface ProductionDrillEntry {
   id: number;
@@ -52,6 +57,34 @@ export function formatDatasheetAssignment(
       .join(' · ');
   }
   return '—';
+}
+
+/** Roll up production drill rows by assignment (case / whitespace insensitive). */
+export function sumProductionByAssignment(rows: ProductionDrillEntry[]): {
+  totals: { name: string; amount: number; jobs: number }[];
+  grandTotal: number;
+} {
+  const map = new Map<string, { name: string; amount: number; jobs: number }>();
+  let grandTotal = 0;
+  for (const r of rows) {
+    const amount = Number(r.amount) || 0;
+    grandTotal += amount;
+    const raw = normalizeDisplayName(r.assignment, 'Unspecified');
+    const key = normalizeNameKey(raw);
+    const cur = map.get(key) || { name: raw, amount: 0, jobs: 0 };
+    cur.name = preferDisplayName(cur.name, raw);
+    cur.amount += amount;
+    cur.jobs += 1;
+    map.set(key, cur);
+  }
+  const totals = [...map.values()]
+    .map((v) => ({
+      name: v.name,
+      amount: Math.round(v.amount * 100) / 100,
+      jobs: v.jobs,
+    }))
+    .sort((a, b) => b.amount - a.amount || a.name.localeCompare(b.name));
+  return { totals, grandTotal: Math.round(grandTotal * 100) / 100 };
 }
 
 export function filterProductionByDate(entries: ProductionDrillEntry[], isoDate: string) {
