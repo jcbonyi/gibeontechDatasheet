@@ -33,7 +33,15 @@ interface AssessorOption {
   name: string;
 }
 
-type QueueFilter = 'attention' | 'overdue' | 'at_risk' | 'unassigned' | 'review' | 'all';
+type QueueFilter =
+  | 'attention'
+  | 'overdue'
+  | 'at_risk'
+  | 'unassigned'
+  | 'review'
+  | 'technical'
+  | 'final_review'
+  | 'all';
 
 const PRIORITY_META: Record<
   QueuePriority,
@@ -137,6 +145,13 @@ export function AnalyticsDashboard() {
   const kpis = summary?.kpis;
   const decisions = summary?.decisions;
 
+  const openQueue = useCallback((filter: QueueFilter) => {
+    setQueueFilter(filter);
+    requestAnimationFrame(() => {
+      document.getElementById('action-queue')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  }, []);
+
   const filteredQueue = useMemo(() => {
     if (!summary) return [];
     const rows = summary.agingQueue;
@@ -147,6 +162,10 @@ export function AnalyticsDashboard() {
         return rows.filter((r) => r.priority === 'at_risk');
       case 'unassigned':
         return rows.filter((r) => !r.assigned_to_name);
+      case 'technical':
+        return rows.filter((r) => r.status === 'pending_review');
+      case 'final_review':
+        return rows.filter((r) => r.status === 'under_review');
       case 'review':
         return rows.filter(
           (r) =>
@@ -366,10 +385,7 @@ export function AnalyticsDashboard() {
               {attentionTotal > 0 && (
                 <button
                   type="button"
-                  onClick={() => {
-                    setQueueFilter('attention');
-                    document.getElementById('action-queue')?.scrollIntoView({ behavior: 'smooth' });
-                  }}
+                  onClick={() => openQueue('attention')}
                   className="btn-primary"
                 >
                   Review action queue
@@ -382,7 +398,7 @@ export function AnalyticsDashboard() {
           <div className="mb-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
             <button
               type="button"
-              onClick={() => setQueueFilter('overdue')}
+              onClick={() => openQueue('overdue')}
               className="section-card group !p-4 text-left transition hover:border-red-200 hover:shadow-lg"
             >
               <div className="flex items-center justify-between">
@@ -403,7 +419,7 @@ export function AnalyticsDashboard() {
 
             <button
               type="button"
-              onClick={() => setQueueFilter('at_risk')}
+              onClick={() => openQueue('at_risk')}
               className="section-card group !p-4 text-left transition hover:border-amber-200 hover:shadow-lg"
             >
               <div className="flex items-center justify-between">
@@ -421,7 +437,7 @@ export function AnalyticsDashboard() {
 
             <button
               type="button"
-              onClick={() => setQueueFilter('unassigned')}
+              onClick={() => openQueue('unassigned')}
               className="section-card group !p-4 text-left transition hover:border-slate-300 hover:shadow-lg"
             >
               <div className="flex items-center justify-between">
@@ -431,13 +447,17 @@ export function AnalyticsDashboard() {
                 <UserRoundX className="h-4 w-4 text-slate-500" />
               </div>
               <p className="mt-2 text-3xl font-bold text-slate-800">{decisions?.unassigned ?? 0}</p>
-              <p className="mt-1 text-xs text-slate-500">Need assessor allocation</p>
+              <p className="mt-1 text-xs text-slate-500">Need field officer allocation</p>
               <p className="mt-2 text-xs font-medium text-brand-700 opacity-0 transition group-hover:opacity-100">
                 Allocate now →
               </p>
             </button>
 
-            <div className="section-card !p-4">
+            <button
+              type="button"
+              onClick={() => openQueue('all')}
+              className="section-card group !p-4 text-left transition hover:border-emerald-200 hover:shadow-lg"
+            >
               <div className="flex items-center justify-between">
                 <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
                   SLA compliance
@@ -451,17 +471,27 @@ export function AnalyticsDashboard() {
                 Target ≥90% · {kpis?.approvedInPeriod ?? 0} reports issued · avg open age{' '}
                 {kpis?.avgAgeDays != null ? `${kpis.avgAgeDays}d` : '—'}
               </p>
-            </div>
+              <p className="mt-2 text-xs font-medium text-brand-700 opacity-0 transition group-hover:opacity-100">
+                View open portfolio →
+              </p>
+            </button>
           </div>
 
           <div className="mb-6 grid gap-3 sm:grid-cols-3">
-            <div className="rounded-2xl border border-white/80 bg-white/90 px-4 py-3 shadow-sm">
+            <button
+              type="button"
+              onClick={() => openQueue('all')}
+              className="group rounded-2xl border border-white/80 bg-white/90 px-4 py-3 text-left shadow-sm transition hover:border-sky-200 hover:shadow-md"
+            >
               <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
                 Open portfolio
               </p>
               <p className="text-xl font-bold text-sky-800">{kpis?.open ?? 0}</p>
               <p className="text-xs text-slate-500">of {kpis?.total ?? 0} in filter</p>
-            </div>
+              <p className="mt-1 text-xs font-medium text-brand-700 opacity-0 transition group-hover:opacity-100">
+                Show all open →
+              </p>
+            </button>
             <div className="rounded-2xl border border-white/80 bg-white/90 px-4 py-3 shadow-sm">
               <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
                 Instructed → issued
@@ -478,20 +508,28 @@ export function AnalyticsDashboard() {
                   : '—'}
               </p>
             </div>
-            <div className="rounded-2xl border border-white/80 bg-white/90 px-4 py-3 shadow-sm">
+            <button
+              type="button"
+              onClick={() => openQueue('review')}
+              className="group rounded-2xl border border-white/80 bg-white/90 px-4 py-3 text-left shadow-sm transition hover:border-violet-200 hover:shadow-md"
+            >
               <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
                 Final review dwell
               </p>
               <p className="text-xl font-bold text-violet-800">
-                {summary.cycleTime.avgUnderReviewDays != null
-                  ? `${summary.cycleTime.avgUnderReviewDays}d`
-                  : '—'}
+                {(decisions?.pendingReview ?? 0) + (decisions?.underReview ?? 0)}
               </p>
               <p className="text-xs text-slate-500">
                 {decisions?.pendingReview ?? 0} with technical · {decisions?.underReview ?? 0} final
                 review
+                {summary.cycleTime.avgUnderReviewDays != null
+                  ? ` · avg ${summary.cycleTime.avgUnderReviewDays}d in final review`
+                  : ''}
               </p>
-            </div>
+              <p className="mt-1 text-xs font-medium text-brand-700 opacity-0 transition group-hover:opacity-100">
+                Open review queue →
+              </p>
+            </button>
           </div>
 
           <div className="mb-6 grid gap-6 xl:grid-cols-5">
@@ -511,7 +549,9 @@ export function AnalyticsDashboard() {
                       ['overdue', 'Overdue'],
                       ['at_risk', 'At risk'],
                       ['unassigned', 'Unassigned'],
-                      ['review', 'Review'],
+                      ['technical', 'With technical'],
+                      ['final_review', 'Final review'],
+                      ['review', 'All review'],
                       ['all', 'All open'],
                     ] as const
                   ).map(([key, label]) => (
