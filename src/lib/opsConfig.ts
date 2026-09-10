@@ -168,7 +168,7 @@ export const SAVED_VIEWS = [
   { id: 'overdue', label: 'Overdue', scope: 'overdue' as const, openOnly: true },
   {
     id: 'pending_review',
-    label: 'With technical',
+    label: 'Under review',
     status: 'pending_review' as const,
     openOnly: false,
   },
@@ -181,7 +181,7 @@ export const SAVED_VIEWS = [
   },
   {
     id: 'in_progress',
-    label: 'Field collection',
+    label: 'Inspection',
     status: 'in_progress' as const,
     openOnly: false,
   },

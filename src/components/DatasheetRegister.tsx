@@ -78,10 +78,10 @@ type ScopeFilter = '' | 'mine' | 'unallocated' | 'overdue' | 'all';
 
 const PIPELINE_STEPS: { status: DatasheetStatus; label: string }[] = [
   { status: 'instructed', label: 'Instructed' },
-  { status: 'in_progress', label: 'Field' },
-  { status: 'pending_review', label: 'Technical' },
+  { status: 'in_progress', label: 'Inspection' },
+  { status: 'pending_review', label: 'Under review' },
   { status: 'under_review', label: 'Final review' },
-  { status: 'report_issued', label: 'Issued' },
+  { status: 'report_issued', label: 'Sent to client' },
 ];
 
 function pillClass(active: boolean): string {

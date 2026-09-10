@@ -20,14 +20,14 @@ export const DATASHEET_STATUSES: DatasheetStatus[] = [
 export const STATUS_LABELS: Record<DatasheetStatus, string> = {
   instructed: 'Instructed',
   allocated: 'Allocated',
-  in_progress: 'Field Collection',
+  in_progress: 'Inspection',
   awaiting_documents: 'Awaiting Documents',
-  submitted: 'Field Submitted',
-  pending_review: 'With Technical',
+  submitted: 'Report Preparation',
+  pending_review: 'Under Review',
   under_review: 'Final Review',
   approved: 'Ready to Issue',
   queried: 'Queried',
-  report_issued: 'Report Issued',
+  report_issued: 'Report Sent to Client',
   on_hold: 'On Hold',
   closed: 'Closed',
   cancelled: 'Cancelled',
@@ -35,17 +35,16 @@ export const STATUS_LABELS: Record<DatasheetStatus, string> = {
 
 export const STATUS_DESCRIPTIONS: Record<DatasheetStatus, string> = {
   instructed: 'New instruction received — file opened',
-  allocated: 'Assigned to a field officer for data collection',
-  in_progress: 'Field officer collecting datasheet data on site',
+  allocated: 'Assigned to an assessor for site inspection',
+  in_progress: 'Assessor inspecting and capturing datasheet details',
   awaiting_documents: 'Waiting for documents from insurer or insured',
-  submitted: 'Field datasheet submitted — awaiting technical handoff',
-  pending_review:
-    'With technical officer — checking documents and compiling the report',
+  submitted: 'Datasheet complete — report being prepared',
+  pending_review: 'Report under review before final sign-off',
   under_review:
     'With Operations Manager or Principal for final review before issue',
   approved: 'Final review passed — ready to issue to the client',
   queried: 'Clarification or amendments required',
-  report_issued: 'Final report issued to the client',
+  report_issued: 'Final report sent to the client',
   on_hold: 'Temporarily suspended',
   closed: 'File closed',
   cancelled: 'Instruction cancelled',
@@ -107,7 +106,7 @@ export const ASSESSOR_EDITABLE_STATUSES: DatasheetStatus[] = [
   'on_hold',
 ];
 
-/** Statuses a field officer may move a task into (handover to technical). */
+/** Statuses an assessor may move a task into (handover to report preparation). */
 export const ASSESSOR_TARGET_STATUSES: DatasheetStatus[] = [
   'in_progress',
   'awaiting_documents',

@@ -192,9 +192,9 @@ export function AnalyticsDashboard() {
       },
       {
         key: 'pending_review',
-        label: 'With technical',
+        label: 'Under review',
         count: decisions?.pendingReview ?? 0,
-        hint: 'Technical officer compiling report',
+        hint: 'Report under review',
         href: '/datasheets?status=pending_review',
       },
       {
@@ -447,7 +447,7 @@ export function AnalyticsDashboard() {
                 <UserRoundX className="h-4 w-4 text-slate-500" />
               </div>
               <p className="mt-2 text-3xl font-bold text-slate-800">{decisions?.unassigned ?? 0}</p>
-              <p className="mt-1 text-xs text-slate-500">Need field officer allocation</p>
+              <p className="mt-1 text-xs text-slate-500">Need assessor allocation</p>
               <p className="mt-2 text-xs font-medium text-brand-700 opacity-0 transition group-hover:opacity-100">
                 Allocate now →
               </p>
@@ -520,8 +520,8 @@ export function AnalyticsDashboard() {
                 {(decisions?.pendingReview ?? 0) + (decisions?.underReview ?? 0)}
               </p>
               <p className="text-xs text-slate-500">
-                {decisions?.pendingReview ?? 0} with technical · {decisions?.underReview ?? 0} final
-                review
+                {decisions?.pendingReview ?? 0} under review ·{' '}
+                {decisions?.underReview ?? 0} final review
                 {summary.cycleTime.avgUnderReviewDays != null
                   ? ` · avg ${summary.cycleTime.avgUnderReviewDays}d in final review`
                   : ''}
@@ -549,7 +549,7 @@ export function AnalyticsDashboard() {
                       ['overdue', 'Overdue'],
                       ['at_risk', 'At risk'],
                       ['unassigned', 'Unassigned'],
-                      ['technical', 'With technical'],
+                      ['technical', 'Under review'],
                       ['final_review', 'Final review'],
                       ['review', 'All review'],
                       ['all', 'All open'],
@@ -801,7 +801,7 @@ export function AnalyticsDashboard() {
           <div className="grid gap-6 lg:grid-cols-2">
             <div className="section-card">
               <h3 className="mb-4 text-sm font-semibold text-brand-800">
-                Field / technical workload (open)
+                Assessor workload (open)
               </h3>
               <SimpleHorizontalBars
                 items={summary.byAssessor.slice(0, 10).map((a) => ({

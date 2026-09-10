@@ -263,7 +263,7 @@ async function markDatasheetReportIssued(
   if (meta.notify) {
     await createNotification({
       type: 'datasheet_report_issued',
-      title: 'Datasheet marked Report Issued',
+      title: 'Datasheet marked Report Sent to Client',
       body: `${row.serial_no} · ${meta.registrationNumber} · ${meta.assignment} (matched production)`,
     });
   }

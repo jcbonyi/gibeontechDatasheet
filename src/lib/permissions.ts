@@ -16,7 +16,7 @@ export const ROLE_LABELS: Record<UserRole, string> = {
   Admin: 'Admin',
   PrincipalOfficer: 'Principal Officer',
   OperationsManager: 'Operations Manager',
-  Assessor: 'Field Officer',
+  Assessor: 'Assessor',
 };
 
 const ROLE_RANK: Record<UserRole, number> = {
