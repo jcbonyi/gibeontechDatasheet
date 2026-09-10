@@ -192,9 +192,9 @@ export function AnalyticsDashboard() {
       },
       {
         key: 'pending_review',
-        label: 'Under review',
+        label: 'Submitted for review',
         count: decisions?.pendingReview ?? 0,
-        hint: 'Report under review',
+        hint: 'Awaiting review',
         href: '/datasheets?status=pending_review',
       },
       {
@@ -520,7 +520,7 @@ export function AnalyticsDashboard() {
                 {(decisions?.pendingReview ?? 0) + (decisions?.underReview ?? 0)}
               </p>
               <p className="text-xs text-slate-500">
-                {decisions?.pendingReview ?? 0} under review ·{' '}
+                {decisions?.pendingReview ?? 0} submitted for review ·{' '}
                 {decisions?.underReview ?? 0} final review
                 {summary.cycleTime.avgUnderReviewDays != null
                   ? ` · avg ${summary.cycleTime.avgUnderReviewDays}d in final review`
@@ -549,7 +549,7 @@ export function AnalyticsDashboard() {
                       ['overdue', 'Overdue'],
                       ['at_risk', 'At risk'],
                       ['unassigned', 'Unassigned'],
-                      ['technical', 'Under review'],
+                      ['technical', 'Submitted for review'],
                       ['final_review', 'Final review'],
                       ['review', 'All review'],
                       ['all', 'All open'],

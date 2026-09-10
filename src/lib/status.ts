@@ -23,7 +23,7 @@ export const STATUS_LABELS: Record<DatasheetStatus, string> = {
   in_progress: 'Inspection',
   awaiting_documents: 'Awaiting Documents',
   submitted: 'Report Preparation',
-  pending_review: 'Under Review',
+  pending_review: 'Submitted For Review',
   under_review: 'Final Review',
   approved: 'Ready to Issue',
   queried: 'Queried',
@@ -39,7 +39,7 @@ export const STATUS_DESCRIPTIONS: Record<DatasheetStatus, string> = {
   in_progress: 'Assessor inspecting and capturing datasheet details',
   awaiting_documents: 'Waiting for documents from insurer or insured',
   submitted: 'Datasheet complete — report being prepared',
-  pending_review: 'Report under review before final sign-off',
+  pending_review: 'Submitted for review before final sign-off',
   under_review:
     'With Operations Manager or Principal for final review before issue',
   approved: 'Final review passed — ready to issue to the client',

@@ -79,7 +79,7 @@ type ScopeFilter = '' | 'mine' | 'unallocated' | 'overdue' | 'all';
 const PIPELINE_STEPS: { status: DatasheetStatus; label: string }[] = [
   { status: 'instructed', label: 'Instructed' },
   { status: 'in_progress', label: 'Inspection' },
-  { status: 'pending_review', label: 'Under review' },
+  { status: 'pending_review', label: 'Submitted for review' },
   { status: 'under_review', label: 'Final review' },
   { status: 'report_issued', label: 'Sent to client' },
 ];
