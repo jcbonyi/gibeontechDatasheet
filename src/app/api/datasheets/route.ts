@@ -13,7 +13,7 @@ import { canViewAllDatasheets } from '@/lib/permissions';
 import { createDefaultFormData, type DatasheetStatus } from '@/types/datasheet';
 import { toListItem } from '@/lib/tracking';
 import { extractDenormalizedFields } from '@/lib/extractFields';
-import { ensureReviewTasksAssignedToFrancis } from '@/lib/reviewAssignee';
+import { ensureReviewTasksAssignedToFrancis, assignToFrancisIfReview } from '@/lib/reviewAssignee';
 import { applyProductionIssuedToDatasheets, shouldAutoIssueDatasheet } from '@/lib/syncDatasheetFromProduction';
 import { parseIdListParam } from '@/lib/dashboardRegisterLinks';
 
@@ -22,7 +22,7 @@ export async function GET(req: NextRequest) {
     const user = await getAuthUser(req);
     if (!user) return unauthorized();
 
-    // Keep Pending Review / Under Review tasks allocated to Francis
+    // Keep Final Review tasks allocated to Francis
     await ensureReviewTasksAssignedToFrancis();
 
     const { searchParams } = new URL(req.url);
@@ -123,6 +123,8 @@ export async function POST(req: NextRequest) {
     if (!datasheet) {
       throw new Error('Failed to allocate a unique serial number');
     }
+
+    await assignToFrancisIfReview(datasheet.id, status, user.id);
 
     await logDatasheetAudit(datasheet.id, user.id, user.name, 'created', {
       status,

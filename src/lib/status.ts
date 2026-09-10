@@ -20,12 +20,12 @@ export const DATASHEET_STATUSES: DatasheetStatus[] = [
 export const STATUS_LABELS: Record<DatasheetStatus, string> = {
   instructed: 'Instructed',
   allocated: 'Allocated',
-  in_progress: 'In Progress',
+  in_progress: 'Field Collection',
   awaiting_documents: 'Awaiting Documents',
-  submitted: 'Submitted',
-  pending_review: 'Pending Review',
-  under_review: 'Under Review',
-  approved: 'Approved',
+  submitted: 'Field Submitted',
+  pending_review: 'With Technical',
+  under_review: 'Final Review',
+  approved: 'Ready to Issue',
   queried: 'Queried',
   report_issued: 'Report Issued',
   on_hold: 'On Hold',
@@ -35,13 +35,15 @@ export const STATUS_LABELS: Record<DatasheetStatus, string> = {
 
 export const STATUS_DESCRIPTIONS: Record<DatasheetStatus, string> = {
   instructed: 'New instruction received — file opened',
-  allocated: 'Assigned to an assessor',
-  in_progress: 'Assessment / inspection underway',
+  allocated: 'Assigned to a field officer for data collection',
+  in_progress: 'Field officer collecting datasheet data on site',
   awaiting_documents: 'Waiting for documents from insurer or insured',
-  submitted: 'Assessor has submitted the file',
-  pending_review: 'Submitted for internal technical review',
-  under_review: 'Being reviewed by operations / principal',
-  approved: 'Internally approved — ready for report issue',
+  submitted: 'Field datasheet submitted — awaiting technical handoff',
+  pending_review:
+    'With technical officer — checking documents and compiling the report',
+  under_review:
+    'With Operations Manager or Principal for final review before issue',
+  approved: 'Final review passed — ready to issue to the client',
   queried: 'Clarification or amendments required',
   report_issued: 'Final report issued to the client',
   on_hold: 'Temporarily suspended',
@@ -105,7 +107,7 @@ export const ASSESSOR_EDITABLE_STATUSES: DatasheetStatus[] = [
   'on_hold',
 ];
 
-/** Statuses an Assessor may move a task into (inclusive of Pending Review). */
+/** Statuses a field officer may move a task into (handover to technical). */
 export const ASSESSOR_TARGET_STATUSES: DatasheetStatus[] = [
   'in_progress',
   'awaiting_documents',
@@ -152,15 +154,20 @@ export interface StatusAction {
   variant?: 'primary' | 'secondary' | 'danger';
 }
 
-/** Allowed next statuses from a given status (workflow graph). */
+/**
+ * Allowed next statuses — mirrors the business handoff:
+ * Field officer → Technical officer → Ops / Principal → client.
+ */
 export const STATUS_TRANSITIONS: Record<DatasheetStatus, DatasheetStatus[]> = {
   instructed: ['allocated', 'in_progress', 'awaiting_documents', 'on_hold', 'cancelled'],
   allocated: ['in_progress', 'awaiting_documents', 'on_hold', 'cancelled'],
   in_progress: ['awaiting_documents', 'submitted', 'pending_review', 'on_hold', 'queried'],
   awaiting_documents: ['in_progress', 'submitted', 'pending_review', 'on_hold', 'cancelled'],
-  submitted: ['pending_review', 'under_review', 'queried', 'on_hold'],
-  pending_review: ['under_review', 'approved', 'queried', 'report_issued', 'on_hold'],
-  under_review: ['approved', 'queried', 'pending_review', 'report_issued', 'on_hold'],
+  submitted: ['pending_review', 'queried', 'on_hold'],
+  // Technical compiles report, then hands to Ops/Principal
+  pending_review: ['under_review', 'queried', 'on_hold'],
+  // Ops/Principal final review before issue
+  under_review: ['approved', 'queried', 'pending_review', 'on_hold'],
   approved: ['report_issued', 'closed', 'queried'],
   queried: ['in_progress', 'awaiting_documents', 'submitted', 'pending_review', 'on_hold'],
   report_issued: ['closed', 'queried'],

@@ -16,7 +16,7 @@ export const ROLE_LABELS: Record<UserRole, string> = {
   Admin: 'Admin',
   PrincipalOfficer: 'Principal Officer',
   OperationsManager: 'Operations Manager',
-  Assessor: 'Assessor',
+  Assessor: 'Field Officer',
 };
 
 const ROLE_RANK: Record<UserRole, number> = {
@@ -76,7 +76,7 @@ export function canEditDatasheet(user: AuthUser, ds: DatasheetRecord): boolean {
   }
 
   if (user.role === 'Assessor') {
-    // Assessors may edit any visible open task in assessor-editable statuses.
+    // Field officers may edit open field-collection stages.
     return ASSESSOR_EDITABLE_STATUSES.includes(status);
   }
 
@@ -93,14 +93,14 @@ export function canAssignDatasheet(user: AuthUser): boolean {
 
 /**
  * Done By: Ops can always set it on open tasks.
- * Assessors who are Seen By (or first to claim Seen By when empty) can set Done By.
+ * Field officers who are Seen By (or first to claim Seen By when empty) can set Done By.
  */
 export function canSetDoneBy(user: AuthUser, ds: DatasheetRecord): boolean {
   if (canAssignDatasheet(user)) return isSuperUser(user.role) || isOpenStatus(ds.status);
   if (user.role !== 'Assessor') return false;
   if (!isOpenStatus(ds.status) && normalizeStatus(ds.status) !== 'approved') return false;
   const seen = String(ds.seenByName || '').trim().toLowerCase();
-  if (!seen) return true; // first Assessor to set Done By also becomes Seen By
+  if (!seen) return true; // first field officer to set Done By also becomes Seen By
   return seen === user.name.trim().toLowerCase();
 }
 
@@ -155,8 +155,9 @@ export function canTransitionStatus(
   if (to === 'approved') {
     return canReviewDatasheet(user);
   }
+  // Technical officer (Assessor) hands compiled report to Ops/Principal
   if (to === 'under_review') {
-    return canReviewDatasheet(user);
+    return canReviewDatasheet(user) || user.role === 'Assessor';
   }
   if (to === 'pending_review' || to === 'submitted') {
     if (user.role === 'Assessor') {
@@ -180,7 +181,7 @@ export function getWorkflowActions(user: AuthUser, ds: DatasheetRecord): StatusA
   for (const status of next) {
     if (!canTransitionStatus(user, ds, status)) continue;
     let variant: StatusAction['variant'] = 'secondary';
-    if (status === 'report_issued' || status === 'pending_review' || status === 'submitted' || status === 'approved') {
+    if (status === 'report_issued' || status === 'pending_review' || status === 'under_review' || status === 'approved') {
       variant = 'primary';
     }
     if (status === 'cancelled') variant = 'danger';

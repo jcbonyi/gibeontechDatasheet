@@ -12,14 +12,25 @@ import { getSupabaseAdmin } from '@/lib/supabase';
 import type { DatasheetStatus } from '@/types/datasheet';
 import crypto from 'crypto';
 
-const REVIEW_STATUSES: DatasheetStatus[] = ['pending_review', 'under_review'];
+/** Final Review stage — Francis owns these tasks. */
+const FRANCIS_STATUSES: DatasheetStatus[] = ['under_review'];
 
-export function isReviewStatus(status: string | null | undefined): boolean {
+export function isFrancisReviewStatus(status: string | null | undefined): boolean {
   const s = String(status || '');
-  return REVIEW_STATUSES.includes(s as DatasheetStatus);
+  return FRANCIS_STATUSES.includes(s as DatasheetStatus);
 }
 
-/** Find Francis (or create Assessor account if missing). */
+/** @deprecated Use isFrancisReviewStatus */
+export function isReviewStatus(status: string | null | undefined): boolean {
+  return isFrancisReviewStatus(status);
+}
+
+/** @deprecated Use isFrancisReviewStatus */
+export function isTechnicalOfficerStatus(status: string | null | undefined): boolean {
+  return isFrancisReviewStatus(status);
+}
+
+/** Find Francis or create Assessor account if missing. */
 export async function getFrancisUserId(): Promise<number | null> {
   await ensureDb();
   const users = await getActiveUsers();
@@ -47,13 +58,15 @@ export async function getFrancisUserId(): Promise<number | null> {
   return created.id;
 }
 
-/** Assign a single datasheet to Francis when status is Pending/Under Review. */
+/**
+ * Assign to Francis when a task enters Final Review.
+ */
 export async function assignToFrancisIfReview(
   datasheetId: number,
   status: string,
   actorUserId: number | null,
 ): Promise<number | null> {
-  if (!isReviewStatus(status)) return null;
+  if (!isFrancisReviewStatus(status)) return null;
   const francisId = await getFrancisUserId();
   if (!francisId) return null;
   await updateDatasheetRecord(datasheetId, {
@@ -66,7 +79,7 @@ export async function assignToFrancisIfReview(
 }
 
 /**
- * Backfill: every Pending Review / Under Review task is allocated to Francis.
+ * Backfill: every Final Review task is allocated to Francis.
  * Safe to call repeatedly — only updates rows not already assigned to Francis.
  */
 export async function ensureReviewTasksAssignedToFrancis(): Promise<number> {
@@ -76,12 +89,11 @@ export async function ensureReviewTasksAssignedToFrancis(): Promise<number> {
   const now = new Date().toISOString();
 
   if (isJsonMode()) {
-    // json mode uses module store via query shim — update through list+update
     const { listDatasheets } = await import('@/lib/db');
     const rows = await listDatasheets({ viewAll: true });
     let count = 0;
     for (const row of rows) {
-      if (!isReviewStatus(row.status)) continue;
+      if (!isFrancisReviewStatus(row.status)) continue;
       if (row.assigned_to === francisId) continue;
       await updateDatasheetRecord(row.id, {
         assigned_to: francisId,
@@ -101,7 +113,7 @@ export async function ensureReviewTasksAssignedToFrancis(): Promise<number> {
         assigned_to: francisId,
         assigned_at: now,
       })
-      .in('status', REVIEW_STATUSES)
+      .in('status', FRANCIS_STATUSES)
       .or(`assigned_to.is.null,assigned_to.neq.${francisId}`)
       .select('id');
     if (error) throw new Error(error.message);
@@ -113,7 +125,7 @@ export async function ensureReviewTasksAssignedToFrancis(): Promise<number> {
      SET assigned_to = $1,
          assigned_at = COALESCE(assigned_at, NOW()),
          assigned_by = COALESCE(assigned_by, $1)
-     WHERE status IN ('pending_review', 'under_review')
+     WHERE status = 'under_review'
        AND (assigned_to IS DISTINCT FROM $1)
      RETURNING id`,
     [francisId],

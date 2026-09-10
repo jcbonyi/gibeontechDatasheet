@@ -166,10 +166,25 @@ export const SAVED_VIEWS = [
   { id: 'my_open', label: 'My open', scope: 'mine' as const, openOnly: true },
   { id: 'unallocated', label: 'Unallocated', scope: 'unallocated' as const, openOnly: true },
   { id: 'overdue', label: 'Overdue', scope: 'overdue' as const, openOnly: true },
-  { id: 'pending_review', label: 'Pending review', status: 'pending_review' as const, openOnly: false },
+  {
+    id: 'pending_review',
+    label: 'With technical',
+    status: 'pending_review' as const,
+    openOnly: false,
+  },
   { id: 'queried', label: 'Queried', status: 'queried' as const, openOnly: false },
-  { id: 'under_review', label: 'Under review', status: 'under_review' as const, openOnly: false },
-  { id: 'in_progress', label: 'In progress', status: 'in_progress' as const, openOnly: false },
+  {
+    id: 'under_review',
+    label: 'Final review',
+    status: 'under_review' as const,
+    openOnly: false,
+  },
+  {
+    id: 'in_progress',
+    label: 'Field collection',
+    status: 'in_progress' as const,
+    openOnly: false,
+  },
   { id: 'all_open', label: 'All open', scope: 'all' as const, openOnly: true },
 ] as const;
 

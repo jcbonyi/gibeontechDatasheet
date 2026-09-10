@@ -173,16 +173,16 @@ export function AnalyticsDashboard() {
       },
       {
         key: 'pending_review',
-        label: 'Pending review',
+        label: 'With technical',
         count: decisions?.pendingReview ?? 0,
-        hint: 'Ready for sign-off',
+        hint: 'Technical officer compiling report',
         href: '/datasheets?status=pending_review',
       },
       {
         key: 'under_review',
-        label: 'Under review',
+        label: 'Final review',
         count: decisions?.underReview ?? 0,
-        hint: 'Finish QA / issue report',
+        hint: 'Ops / Principal before issue',
         href: '/datasheets?status=under_review',
       },
       {
@@ -480,7 +480,7 @@ export function AnalyticsDashboard() {
             </div>
             <div className="rounded-2xl border border-white/80 bg-white/90 px-4 py-3 shadow-sm">
               <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-                Under review dwell
+                Final review dwell
               </p>
               <p className="text-xl font-bold text-violet-800">
                 {summary.cycleTime.avgUnderReviewDays != null
@@ -488,7 +488,8 @@ export function AnalyticsDashboard() {
                   : '—'}
               </p>
               <p className="text-xs text-slate-500">
-                {decisions?.pendingReview ?? 0} pending · {decisions?.underReview ?? 0} in review
+                {decisions?.pendingReview ?? 0} with technical · {decisions?.underReview ?? 0} final
+                review
               </p>
             </div>
           </div>
@@ -759,7 +760,9 @@ export function AnalyticsDashboard() {
 
           <div className="grid gap-6 lg:grid-cols-2">
             <div className="section-card">
-              <h3 className="mb-4 text-sm font-semibold text-brand-800">Assessor workload (open)</h3>
+              <h3 className="mb-4 text-sm font-semibold text-brand-800">
+                Field / technical workload (open)
+              </h3>
               <SimpleHorizontalBars
                 items={summary.byAssessor.slice(0, 10).map((a) => ({
                   label: a.name,

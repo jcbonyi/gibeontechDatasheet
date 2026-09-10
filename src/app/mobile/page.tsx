@@ -159,7 +159,7 @@ export default function MobileAssessorPage() {
                 className="btn-secondary w-full py-3"
               >
                 <Send className="h-4 w-4" />
-                Create & submit for review
+                Create & hand over to technical
               </button>
             </div>
           </div>

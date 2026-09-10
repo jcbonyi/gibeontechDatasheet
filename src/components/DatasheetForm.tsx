@@ -296,9 +296,10 @@ export function DatasheetForm({
   const onSubmit = async (data: DatasheetFormData) => {
     setSubmitError('');
     try {
-      await onSave(data, 'submitted');
+      // Field officer handoff → technical officer (report compilation)
+      await onSave(data, 'pending_review');
     } catch (err) {
-      setSubmitError(err instanceof Error ? err.message : 'Failed to submit');
+      setSubmitError(err instanceof Error ? err.message : 'Failed to hand over');
     }
   };
 
@@ -907,7 +908,7 @@ export function DatasheetForm({
           {canSubmitForReview && (
             <button type="button" onClick={handleSubmit(onSubmit)} className="btn-primary" disabled={isSubmitting}>
               <Send className="h-4 w-4" />
-              {isSubmitting ? 'Submitting…' : 'Submit for review'}
+              {isSubmitting ? 'Handing over…' : 'Hand over to technical'}
             </button>
           )}
           <button type="button" onClick={onExportPdf} className="btn-secondary">
