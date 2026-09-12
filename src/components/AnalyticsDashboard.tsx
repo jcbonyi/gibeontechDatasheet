@@ -533,15 +533,20 @@ export function AnalyticsDashboard() {
             </button>
           </div>
 
-          <div className="mb-4 grid gap-4 xl:grid-cols-5">
+          <div className="mb-4 grid items-start gap-3 xl:grid-cols-5">
             {/* Action queue — primary decision surface */}
-            <div id="action-queue" className="section-card !p-4 sm:!p-5 xl:col-span-3">
-              <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-                <div>
-                  <h2 className="text-sm font-semibold text-brand-800">Action queue</h2>
-                  <p className="text-xs text-slate-500">
-                    Prioritised for decisions — critical & overdue first
-                  </p>
+            <div id="action-queue" className="section-card !p-3 sm:!p-3.5 xl:col-span-3">
+              <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                <div className="min-w-0">
+                  <h2 className="text-sm font-semibold text-brand-800">
+                    Action queue
+                    {filteredQueue.length > 0 && (
+                      <span className="ml-1.5 text-xs font-medium text-slate-500">
+                        ({filteredQueue.length})
+                      </span>
+                    )}
+                  </h2>
+                  <p className="text-[11px] text-slate-500">Critical & overdue first</p>
                 </div>
                 <div className="flex flex-wrap gap-1">
                   {(
@@ -573,24 +578,24 @@ export function AnalyticsDashboard() {
               </div>
 
               {filteredQueue.length === 0 ? (
-                <div className="rounded-lg border border-dashed border-slate-200 bg-slate-50/80 py-6 text-center">
-                  <CheckCircle2 className="mx-auto h-6 w-6 text-emerald-500" />
-                  <p className="mt-1.5 text-sm font-medium text-slate-700">Nothing in this view</p>
-                  <p className="text-xs text-slate-500">Switch filter or clear period constraints</p>
+                <div className="rounded-lg border border-dashed border-slate-200 bg-slate-50/80 py-4 text-center">
+                  <CheckCircle2 className="mx-auto h-5 w-5 text-emerald-500" />
+                  <p className="mt-1 text-sm font-medium text-slate-700">Nothing in this view</p>
+                  <p className="text-[11px] text-slate-500">Switch filter or clear period constraints</p>
                 </div>
               ) : (
-                <div className="overflow-x-auto">
-                  <table className="data-table">
-                    <thead>
+                <div className="max-h-[22rem] overflow-auto rounded-lg border border-slate-100">
+                  <table className="data-table text-xs">
+                    <thead className="sticky top-0 z-10 bg-white shadow-[0_1px_0_0_rgb(226_232_240)]">
                       <tr>
-                        <th>Priority</th>
-                        <th>Serial</th>
-                        <th>Claim / Reg</th>
-                        <th>Insurer</th>
-                        <th>Status</th>
-                        <th>Age</th>
-                        <th>Owner</th>
-                        <th />
+                        <th className="!pb-2 !pt-2 !text-[10px]">Priority</th>
+                        <th className="!pb-2 !pt-2 !text-[10px]">Serial</th>
+                        <th className="!pb-2 !pt-2 !text-[10px]">Claim / Reg</th>
+                        <th className="!pb-2 !pt-2 !text-[10px]">Insurer</th>
+                        <th className="!pb-2 !pt-2 !text-[10px]">Status</th>
+                        <th className="!pb-2 !pt-2 !text-[10px]">Age</th>
+                        <th className="!pb-2 !pt-2 !text-[10px]">Owner</th>
+                        <th className="!pb-2 !pt-2" />
                       </tr>
                     </thead>
                     <tbody>
@@ -598,23 +603,23 @@ export function AnalyticsDashboard() {
                         const meta = PRIORITY_META[row.priority];
                         return (
                           <tr key={row.id}>
-                            <td>
+                            <td className="!py-1.5">
                               <span
-                                className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ring-1 ${meta.className}`}
+                                className={`inline-flex rounded-full px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide ring-1 ${meta.className}`}
                               >
                                 {meta.label}
                               </span>
                             </td>
-                            <td className="font-semibold text-brand-800">{row.serial_no}</td>
-                            <td>
-                              <div className="text-slate-800">{row.claim_no || '—'}</div>
-                              <div className="text-xs text-slate-500">{row.reg_no || '—'}</div>
+                            <td className="!py-1.5 font-semibold text-brand-800">{row.serial_no}</td>
+                            <td className="!py-1.5">
+                              <div className="truncate text-slate-800">{row.claim_no || '—'}</div>
+                              <div className="truncate text-[10px] text-slate-500">{row.reg_no || '—'}</div>
                             </td>
-                            <td className="max-w-[9rem] truncate">{row.client_insurer || '—'}</td>
-                            <td>
+                            <td className="!py-1.5 max-w-[7rem] truncate">{row.client_insurer || '—'}</td>
+                            <td className="!py-1.5">
                               <StatusBadge status={row.status} />
                             </td>
-                            <td>
+                            <td className="!py-1.5">
                               <span
                                 className={
                                   row.is_overdue
@@ -627,14 +632,16 @@ export function AnalyticsDashboard() {
                                 {row.age_days != null ? `${row.age_days}d` : '—'}
                               </span>
                             </td>
-                            <td>{row.assigned_to_name || <span className="text-slate-400">Unassigned</span>}</td>
-                            <td>
+                            <td className="!py-1.5 max-w-[6rem] truncate">
+                              {row.assigned_to_name || <span className="text-slate-400">Unassigned</span>}
+                            </td>
+                            <td className="!py-1.5">
                               <Link
                                 href={`/datasheets/${row.id}`}
-                                className="inline-flex items-center gap-1 font-medium text-brand-600 hover:text-brand-800"
+                                className="inline-flex items-center gap-0.5 text-[11px] font-medium text-brand-600 hover:text-brand-800"
                               >
                                 Decide
-                                <ArrowRight className="h-3.5 w-3.5" />
+                                <ArrowRight className="h-3 w-3" />
                               </Link>
                             </td>
                           </tr>
@@ -647,25 +654,25 @@ export function AnalyticsDashboard() {
             </div>
 
             {/* Side decisions */}
-            <div className="space-y-4 xl:col-span-2">
-              <div className="section-card !p-4 sm:!p-5">
-                <div className="mb-2.5 flex items-center gap-2">
+            <div className="space-y-3 xl:col-span-2">
+              <div className="section-card !p-3 sm:!p-3.5">
+                <div className="mb-2 flex items-center gap-2">
                   <ClipboardList className="h-4 w-4 text-brand-600" />
                   <h2 className="text-sm font-semibold text-brand-800">Pipeline bottlenecks</h2>
                 </div>
                 {bottleneckStages.length === 0 ? (
                   <p className="text-sm text-slate-500">No staging backlog — pipeline is flowing.</p>
                 ) : (
-                  <ul className="space-y-1.5">
+                  <ul className="max-h-48 space-y-1 overflow-y-auto">
                     {bottleneckStages.map((stage) => (
                       <li key={stage.key}>
                         <Link
                           href={stage.href}
-                          className="flex items-center justify-between rounded-lg border border-slate-100 bg-slate-50/80 px-2.5 py-2 transition hover:border-brand-200 hover:bg-brand-50/60"
+                          className="flex items-center justify-between rounded-lg border border-slate-100 bg-slate-50/80 px-2.5 py-1.5 transition hover:border-brand-200 hover:bg-brand-50/60"
                         >
                           <div className="min-w-0">
                             <p className="truncate text-sm font-semibold text-slate-800">{stage.label}</p>
-                            <p className="truncate text-[11px] text-slate-500">{stage.hint}</p>
+                            <p className="truncate text-[10px] text-slate-500">{stage.hint}</p>
                           </div>
                           <span className="ml-2 shrink-0 rounded-md bg-white px-2 py-0.5 text-sm font-bold text-brand-800 shadow-sm">
                             {stage.count}
@@ -677,17 +684,17 @@ export function AnalyticsDashboard() {
                 )}
               </div>
 
-              <div className="section-card !p-4 sm:!p-5">
-                <div className="mb-2.5 flex items-center gap-2">
+              <div className="section-card !p-3 sm:!p-3.5">
+                <div className="mb-2 flex items-center gap-2">
                   <Users className="h-4 w-4 text-brand-600" />
                   <h2 className="text-sm font-semibold text-brand-800">Capacity alerts</h2>
                 </div>
                 {strainedAssessors.length === 0 ? (
                   <p className="text-sm text-slate-500">No overloaded assessors in this filter.</p>
                 ) : (
-                  <ul className="space-y-2">
+                  <ul className="max-h-52 space-y-1.5 overflow-y-auto">
                     {strainedAssessors.map((a) => (
-                      <li key={a.name} className="rounded-lg border border-slate-100 px-2.5 py-2">
+                      <li key={a.name} className="rounded-lg border border-slate-100 px-2.5 py-1.5">
                         <div className="flex items-center justify-between gap-2">
                           <p className="truncate text-sm font-semibold text-slate-800">{a.name}</p>
                           {a.overdue > 0 ? (
@@ -700,14 +707,14 @@ export function AnalyticsDashboard() {
                             </span>
                           )}
                         </div>
-                        <div className="mt-1 flex gap-2.5 text-[10px] text-slate-500">
+                        <div className="mt-0.5 flex gap-2.5 text-[10px] text-slate-500">
                           <span>{a.open} open</span>
                           <span>
                             Avg {a.avgAgeDays != null ? `${a.avgAgeDays}d` : '—'}
                           </span>
                           <span>SLA {a.slaPct != null ? `${a.slaPct}%` : '—'}</span>
                         </div>
-                        <div className="mt-1.5 h-1 overflow-hidden rounded-full bg-slate-100">
+                        <div className="mt-1 h-1 overflow-hidden rounded-full bg-slate-100">
                           <div
                             className="h-full rounded-full"
                             style={{
@@ -723,7 +730,7 @@ export function AnalyticsDashboard() {
                 {(decisions?.unassigned ?? 0) > 0 && (
                   <Link
                     href="/datasheets?unallocated=1"
-                    className="mt-2.5 inline-flex items-center gap-1 text-xs font-semibold text-brand-700 hover:text-brand-900"
+                    className="mt-2 inline-flex items-center gap-1 text-xs font-semibold text-brand-700 hover:text-brand-900"
                   >
                     Assign {decisions?.unassigned} unallocated tasks
                     <ArrowRight className="h-3.5 w-3.5" />
