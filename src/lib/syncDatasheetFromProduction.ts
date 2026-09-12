@@ -120,7 +120,8 @@ function matchingProduction(
 }
 
 /**
- * When a production job is saved, set matching open datasheets to Report Issued.
+ * When a production job is saved, close matching open datasheets
+ * so they leave pending queues in datasheet + production dashboards.
  */
 export async function issueMatchingDatasheetsFromProduction(
   input: {
@@ -146,22 +147,22 @@ export async function issueMatchingDatasheetsFromProduction(
     );
   });
 
-  const issuedIds: number[] = [];
+  const closedIds: number[] = [];
   for (const row of matches) {
-    const ok = await markDatasheetReportIssued(row, actor, {
+    const ok = await markDatasheetClosedFromProduction(row, actor, {
       productionId: input.productionId ?? null,
       registrationNumber: input.registrationNumber || '',
       assignment: input.assignment || '',
       notify: true,
     });
-    if (ok) issuedIds.push(row.id);
+    if (ok) closedIds.push(row.id);
   }
-  return issuedIds;
+  return closedIds;
 }
 
 /**
- * Apply Report Issued to every open datasheet that already has a matching
- * production job. Used when the datasheet module loads so existing work is updated.
+ * Close every open datasheet that already has a matching production job.
+ * Used when datasheet/analytics lists load so pending work is cleared.
  */
 export async function applyProductionIssuedToDatasheets<T extends DbDatasheetListRow>(
   sheets: T[],
@@ -174,27 +175,27 @@ export async function applyProductionIssuedToDatasheets<T extends DbDatasheetLis
   const index = productionIndex(entries);
   if (!index.size) return sheets;
 
-  const issued = new Set<number>();
+  const closed = new Set<number>();
   for (const row of open) {
     const { regNo, formTypes } = datasheetMatchFields(row);
     const prod = matchingProduction(index, regNo, formTypes);
     if (!prod) continue;
-    const ok = await markDatasheetReportIssued(row, actor, {
+    const ok = await markDatasheetClosedFromProduction(row, actor, {
       productionId: prod.id,
       registrationNumber: prod.registration_number,
       assignment: prod.assignment || '',
       notify: false,
     });
-    if (ok) issued.add(row.id);
+    if (ok) closed.add(row.id);
   }
 
-  if (!issued.size) return sheets;
+  if (!closed.size) return sheets;
 
   return sheets.map((row) =>
-    issued.has(row.id)
+    closed.has(row.id)
       ? {
           ...row,
-          status: 'report_issued' as DatasheetStatus,
+          status: 'closed' as DatasheetStatus,
           updated_by: actor.id,
           reviewed_by: actor.id,
         }
@@ -215,7 +216,16 @@ export async function hasMatchingActiveProduction(
   return Boolean(matchingProduction(index, registrationNumber || null, formTypes || null));
 }
 
+/** @deprecated name kept for callers — now means auto-close from production match */
 export async function shouldAutoIssueDatasheet(input: {
+  status: string | null | undefined;
+  registrationNumber: string | null | undefined;
+  formTypes: string | string[] | null | undefined;
+}): Promise<boolean> {
+  return shouldAutoCloseDatasheet(input);
+}
+
+export async function shouldAutoCloseDatasheet(input: {
   status: string | null | undefined;
   registrationNumber: string | null | undefined;
   formTypes: string | string[] | null | undefined;
@@ -225,12 +235,12 @@ export async function shouldAutoIssueDatasheet(input: {
     if (isTerminalStatus(status) || !isOpenStatus(status)) return false;
     return await hasMatchingActiveProduction(input.registrationNumber, input.formTypes);
   } catch (err) {
-    console.error('Production match check for datasheet auto-issue failed', err);
+    console.error('Production match check for datasheet auto-close failed', err);
     return false;
   }
 }
 
-async function markDatasheetReportIssued(
+async function markDatasheetClosedFromProduction(
   row: Pick<DbDatasheet, 'id' | 'status' | 'serial_no' | 'reg_no'>,
   actor: SyncActor,
   meta: {
@@ -241,10 +251,13 @@ async function markDatasheetReportIssued(
   },
 ): Promise<boolean> {
   const from = row.status as DatasheetStatus;
-  if (from === 'report_issued' || from === 'closed' || from === 'cancelled') return false;
+  if (from === 'closed' || from === 'cancelled') return false;
+  // Already finished to client — leave as issued unless still somehow open
+  if (from === 'report_issued') return false;
+  if (!isOpenStatus(from)) return false;
 
   await updateDatasheetRecord(row.id, {
-    status: 'report_issued',
+    status: 'closed',
     updated_by: actor.id,
     reviewed_by: actor.id,
     reviewed_at: new Date().toISOString(),
@@ -252,8 +265,8 @@ async function markDatasheetReportIssued(
 
   await logDatasheetAudit(row.id, actor.id, actor.name, 'status_changed', {
     from,
-    to: 'report_issued',
-    label: STATUS_LABELS.report_issued,
+    to: 'closed',
+    label: STATUS_LABELS.closed,
     autoFromProduction: true,
     productionId: meta.productionId || undefined,
     registrationNumber: meta.registrationNumber,
@@ -262,8 +275,8 @@ async function markDatasheetReportIssued(
 
   if (meta.notify) {
     await createNotification({
-      type: 'datasheet_report_issued',
-      title: 'Datasheet marked Report Sent to Client',
+      type: 'datasheet_closed_from_production',
+      title: 'Datasheet marked Closed',
       body: `${row.serial_no} · ${meta.registrationNumber} · ${meta.assignment} (matched production)`,
     });
   }

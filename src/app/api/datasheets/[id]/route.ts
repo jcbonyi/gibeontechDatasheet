@@ -96,12 +96,12 @@ export async function PATCH(
 
     formData = applySeenBy(formData, user.name, user.role);
     const denorm = extractDenormalizedFields(formData, datasheet.serial_no);
-    const autoIssued = await shouldAutoIssueDatasheet({
+    const autoClosed = await shouldAutoIssueDatasheet({
       status,
       registrationNumber: denorm.reg_no,
       formTypes: denorm.form_types,
     });
-    if (autoIssued) status = 'report_issued';
+    if (autoClosed) status = 'closed';
 
     const updated = await updateDatasheetRecord(Number(id), {
       status,
@@ -113,7 +113,7 @@ export async function PATCH(
       client_insurer: denorm.client_insurer,
       form_types: denorm.form_types,
       search_text: denorm.search_text,
-      ...(autoIssued
+      ...(autoClosed
         ? { reviewed_by: user.id, reviewed_at: new Date().toISOString() }
         : {}),
     });
@@ -123,7 +123,7 @@ export async function PATCH(
     await logDatasheetAudit(datasheet.id, user.id, user.name, 'updated', {
       status,
       previousStatus: datasheet.status,
-      autoFromProduction: autoIssued || undefined,
+      autoFromProduction: autoClosed || undefined,
     });
 
     return NextResponse.json({ datasheet: (await getDatasheetById(Number(id))) || updated });

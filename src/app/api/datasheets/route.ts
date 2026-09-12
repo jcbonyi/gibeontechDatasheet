@@ -78,13 +78,13 @@ export async function POST(req: NextRequest) {
     ) as DatasheetStatus;
     formData = applySeenBy(formData, user.name, user.role);
     const previewDenorm = extractDenormalizedFields(formData);
-    const autoIssued = await shouldAutoIssueDatasheet({
+    const autoClosed = await shouldAutoIssueDatasheet({
       status,
       registrationNumber: previewDenorm.reg_no,
       formTypes: previewDenorm.form_types,
     });
-    if (autoIssued) status = 'report_issued';
-    const reviewedAt = autoIssued ? new Date().toISOString() : null;
+    if (autoClosed) status = 'closed';
+    const reviewedAt = autoClosed ? new Date().toISOString() : null;
 
     let datasheet = null;
     for (let attempt = 0; attempt < 5; attempt++) {
@@ -110,7 +110,7 @@ export async function POST(req: NextRequest) {
           cancel_reason: null,
           query_reason: null,
           delay_notes: [],
-          reviewed_by: autoIssued ? user.id : null,
+          reviewed_by: autoClosed ? user.id : null,
           reviewed_at: reviewedAt,
           search_text: denorm.search_text,
         });
@@ -128,7 +128,7 @@ export async function POST(req: NextRequest) {
 
     await logDatasheetAudit(datasheet.id, user.id, user.name, 'created', {
       status,
-      autoFromProduction: autoIssued || undefined,
+      autoFromProduction: autoClosed || undefined,
     });
 
     return NextResponse.json({ datasheet }, { status: 201 });
