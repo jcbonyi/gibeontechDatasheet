@@ -19,6 +19,34 @@ export default function NewDatasheetPage() {
   );
 
   const handleSave = async (formData: DatasheetFormData, status: DatasheetStatus) => {
+    const claimNo = formData.basicInfo?.claimNo?.trim() || '';
+    const regNo = formData.basicInfo?.regNo?.trim() || '';
+    const insurer = formData.basicInfo?.clientInsurer?.trim() || '';
+
+    if (claimNo || regNo) {
+      const params = new URLSearchParams();
+      if (claimNo) params.set('claimNo', claimNo);
+      if (regNo) params.set('regNo', regNo);
+      if (insurer) params.set('insurer', insurer);
+      const check = await fetchJson<{
+        matches?: { serial_no: string; status: string }[];
+        message?: string;
+      }>(`/api/datasheets/duplicates?${params}`);
+      const matches = check.data.matches || [];
+      if (check.ok && matches.length > 0) {
+        const list = matches
+          .slice(0, 8)
+          .map((m) => `• ${m.serial_no} (${m.status})`)
+          .join('\n');
+        const proceed = window.confirm(
+          `Possible duplicate${matches.length === 1 ? '' : 's'} already open:\n\n${list}${
+            matches.length > 8 ? `\n…and ${matches.length - 8} more` : ''
+          }\n\nCreate this instruction anyway?`,
+        );
+        if (!proceed) return;
+      }
+    }
+
     const { ok, data } = await fetchJson<{ message?: string; datasheet: { id: number } }>(
       '/api/datasheets',
       {
@@ -34,7 +62,10 @@ export default function NewDatasheetPage() {
   return (
     <AuthGuard>
       <AppShell>
-        <PageHeader title="New instruction" subtitle="Open a motor assessment, inspection, or re-inspection task" />
+        <PageHeader
+          title="New instruction"
+          subtitle="Open a motor assessment, inspection, or re-inspection task"
+        />
         <DatasheetForm initialData={initialData} onSave={handleSave} status="instructed" />
       </AppShell>
     </AuthGuard>

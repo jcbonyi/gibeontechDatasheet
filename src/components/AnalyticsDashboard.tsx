@@ -260,9 +260,9 @@ export function AnalyticsDashboard() {
         </div>
       </div>
 
-      <div className="section-card mb-6 !py-4">
-        <div className="mb-3 flex flex-wrap items-center gap-2">
-          <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">Period</span>
+      <div className="section-card mb-4 !p-3 sm:!p-4">
+        <div className="mb-2 flex flex-wrap items-center gap-1.5">
+          <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">Period</span>
           {(
             [
               ['all', 'All time'],
@@ -275,32 +275,32 @@ export function AnalyticsDashboard() {
               key={key}
               type="button"
               onClick={() => applyPreset(key)}
-              className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-600 hover:border-brand-300 hover:bg-brand-50 hover:text-brand-800"
+              className="rounded-full border border-slate-200 bg-white px-2.5 py-0.5 text-[11px] font-semibold text-slate-600 hover:border-brand-300 hover:bg-brand-50 hover:text-brand-800"
             >
               {label}
             </button>
           ))}
         </div>
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
           <input
             type="date"
             value={fromDate}
             onChange={(e) => setFromDate(e.target.value)}
-            className="form-input"
+            className="form-input !py-1.5 text-sm"
             title="From date"
           />
           <input
             type="date"
             value={toDate}
             onChange={(e) => setToDate(e.target.value)}
-            className="form-input"
+            className="form-input !py-1.5 text-sm"
             title="To date"
           />
           {viewAll && (
             <select
               value={assessorId}
               onChange={(e) => setAssessorId(e.target.value)}
-              className="form-input"
+              className="form-input !py-1.5 text-sm"
             >
               <option value="">All assessors</option>
               {assessors.map((a) => (
@@ -310,16 +310,16 @@ export function AnalyticsDashboard() {
               ))}
             </select>
           )}
-          <button type="button" onClick={load} className="btn-secondary lg:col-span-1">
-            <Search className="h-4 w-4" />
+          <button type="button" onClick={load} className="btn-secondary !px-3 !py-1.5 text-xs lg:col-span-1">
+            <Search className="h-3.5 w-3.5" />
             Apply
           </button>
           <button
             type="button"
             onClick={() => download('register', 'xlsx')}
-            className="btn-secondary"
+            className="btn-secondary !px-3 !py-1.5 text-xs"
           >
-            <FileSpreadsheet className="h-4 w-4" />
+            <FileSpreadsheet className="h-3.5 w-3.5" />
             Register
           </button>
         </div>
@@ -334,32 +334,32 @@ export function AnalyticsDashboard() {
         <>
           {/* Attention banner */}
           <div
-            className={`mb-6 overflow-hidden rounded-2xl border ${
+            className={`mb-4 overflow-hidden rounded-xl border ${
               attentionTotal > 0
                 ? 'border-amber-200/80 bg-gradient-to-r from-amber-50 via-white to-orange-50'
                 : 'border-emerald-200/80 bg-gradient-to-r from-emerald-50 via-white to-teal-50'
             }`}
           >
-            <div className="flex flex-wrap items-center justify-between gap-4 px-5 py-4 sm:px-7">
-              <div className="flex items-start gap-3">
+            <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-2.5 sm:px-5">
+              <div className="flex min-w-0 items-center gap-2.5">
                 <div
-                  className={`mt-0.5 rounded-xl p-2 ${
+                  className={`shrink-0 rounded-lg p-1.5 ${
                     attentionTotal > 0 ? 'bg-amber-100 text-amber-800' : 'bg-emerald-100 text-emerald-800'
                   }`}
                 >
                   {attentionTotal > 0 ? (
-                    <AlertTriangle className="h-5 w-5" />
+                    <AlertTriangle className="h-4 w-4" />
                   ) : (
-                    <CheckCircle2 className="h-5 w-5" />
+                    <CheckCircle2 className="h-4 w-4" />
                   )}
                 </div>
-                <div>
+                <div className="min-w-0">
                   <p className="text-sm font-semibold text-slate-900">
                     {attentionTotal > 0
                       ? `${attentionTotal} item${attentionTotal === 1 ? '' : 's'} need management attention`
                       : 'Portfolio is clear — no urgent decisions right now'}
                   </p>
-                  <p className="mt-0.5 text-sm text-slate-600">
+                  <p className="truncate text-xs text-slate-600">
                     {attentionTotal > 0
                       ? [
                           decisions && decisions.overdueCritical > 0
@@ -386,7 +386,7 @@ export function AnalyticsDashboard() {
                 <button
                   type="button"
                   onClick={() => openQueue('attention')}
-                  className="btn-primary"
+                  className="btn-primary !px-3.5 !py-1.5 text-xs"
                 >
                   Review action queue
                 </button>
@@ -394,163 +394,164 @@ export function AnalyticsDashboard() {
             </div>
           </div>
 
-          {/* Decision KPIs */}
-          <div className="mb-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          {/* Compact decision KPIs — single dense strip */}
+          <div className="mb-4 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7">
             <button
               type="button"
               onClick={() => openQueue('overdue')}
-              className="section-card group !p-4 text-left transition hover:border-red-200 hover:shadow-lg"
+              title="Open overdue queue"
+              className="rounded-xl border border-red-100/80 bg-white px-3 py-2 text-left shadow-sm transition hover:border-red-200 hover:bg-red-50/40"
             >
-              <div className="flex items-center justify-between">
-                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Overdue</p>
-                <Clock3 className="h-4 w-4 text-red-500" />
+              <div className="flex items-center justify-between gap-1">
+                <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+                  Overdue
+                </span>
+                <Clock3 className="h-3.5 w-3.5 shrink-0 text-red-500" />
               </div>
-              <p className="mt-2 text-3xl font-bold text-red-700">{kpis?.overdue ?? 0}</p>
-              <p className="mt-1 text-xs text-slate-500">
-                Past {SLA_DAYS}-day SLA
+              <p className="mt-0.5 text-2xl font-bold leading-none text-red-700">{kpis?.overdue ?? 0}</p>
+              <p className="mt-1 truncate text-[10px] leading-tight text-slate-500">
                 {(decisions?.overdueCritical ?? 0) > 0
-                  ? ` · ${decisions?.overdueCritical} at 15d+`
-                  : ''}
-              </p>
-              <p className="mt-2 text-xs font-medium text-brand-700 opacity-0 transition group-hover:opacity-100">
-                Open overdue queue →
+                  ? `${decisions?.overdueCritical} critical · ${SLA_DAYS}d SLA`
+                  : `Past ${SLA_DAYS}-day SLA`}
               </p>
             </button>
 
             <button
               type="button"
               onClick={() => openQueue('at_risk')}
-              className="section-card group !p-4 text-left transition hover:border-amber-200 hover:shadow-lg"
+              title="Open at-risk queue"
+              className="rounded-xl border border-amber-100/80 bg-white px-3 py-2 text-left shadow-sm transition hover:border-amber-200 hover:bg-amber-50/40"
             >
-              <div className="flex items-center justify-between">
-                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">At risk</p>
-                <AlertTriangle className="h-4 w-4 text-amber-500" />
+              <div className="flex items-center justify-between gap-1">
+                <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+                  At risk
+                </span>
+                <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-amber-500" />
               </div>
-              <p className="mt-2 text-3xl font-bold text-amber-700">{decisions?.atRisk ?? 0}</p>
-              <p className="mt-1 text-xs text-slate-500">
-                Days {AT_RISK_FROM_DAY}–{SLA_DAYS} · chase before breach
+              <p className="mt-0.5 text-2xl font-bold leading-none text-amber-700">
+                {decisions?.atRisk ?? 0}
               </p>
-              <p className="mt-2 text-xs font-medium text-brand-700 opacity-0 transition group-hover:opacity-100">
-                Open at-risk queue →
+              <p className="mt-1 truncate text-[10px] leading-tight text-slate-500">
+                Days {AT_RISK_FROM_DAY}–{SLA_DAYS}
               </p>
             </button>
 
             <button
               type="button"
               onClick={() => openQueue('unassigned')}
-              className="section-card group !p-4 text-left transition hover:border-slate-300 hover:shadow-lg"
+              title="Open unassigned queue"
+              className="rounded-xl border border-slate-200/80 bg-white px-3 py-2 text-left shadow-sm transition hover:border-slate-300 hover:bg-slate-50"
             >
-              <div className="flex items-center justify-between">
-                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+              <div className="flex items-center justify-between gap-1">
+                <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">
                   Unassigned
-                </p>
-                <UserRoundX className="h-4 w-4 text-slate-500" />
+                </span>
+                <UserRoundX className="h-3.5 w-3.5 shrink-0 text-slate-500" />
               </div>
-              <p className="mt-2 text-3xl font-bold text-slate-800">{decisions?.unassigned ?? 0}</p>
-              <p className="mt-1 text-xs text-slate-500">Need assessor allocation</p>
-              <p className="mt-2 text-xs font-medium text-brand-700 opacity-0 transition group-hover:opacity-100">
-                Allocate now →
+              <p className="mt-0.5 text-2xl font-bold leading-none text-slate-800">
+                {decisions?.unassigned ?? 0}
               </p>
+              <p className="mt-1 truncate text-[10px] leading-tight text-slate-500">Need allocation</p>
             </button>
 
             <button
               type="button"
               onClick={() => openQueue('all')}
-              className="section-card group !p-4 text-left transition hover:border-emerald-200 hover:shadow-lg"
+              title="View open portfolio"
+              className="rounded-xl border border-slate-200/80 bg-white px-3 py-2 text-left shadow-sm transition hover:border-emerald-200 hover:bg-emerald-50/30"
             >
-              <div className="flex items-center justify-between">
-                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                  SLA compliance
-                </p>
-                <CheckCircle2 className={`h-4 w-4 ${slaOk ? 'text-emerald-500' : 'text-red-500'}`} />
+              <div className="flex items-center justify-between gap-1">
+                <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+                  SLA
+                </span>
+                <CheckCircle2
+                  className={`h-3.5 w-3.5 shrink-0 ${slaOk ? 'text-emerald-500' : 'text-red-500'}`}
+                />
               </div>
-              <p className={`mt-2 text-3xl font-bold ${slaTone(kpis?.slaCompliancePct)}`}>
+              <p className={`mt-0.5 text-2xl font-bold leading-none ${slaTone(kpis?.slaCompliancePct)}`}>
                 {kpis?.slaCompliancePct != null ? `${kpis.slaCompliancePct}%` : '—'}
               </p>
-              <p className="mt-1 text-xs text-slate-500">
-                Target ≥90% · {kpis?.approvedInPeriod ?? 0} reports issued · avg open age{' '}
-                {kpis?.avgAgeDays != null ? `${kpis.avgAgeDays}d` : '—'}
-              </p>
-              <p className="mt-2 text-xs font-medium text-brand-700 opacity-0 transition group-hover:opacity-100">
-                View open portfolio →
+              <p className="mt-1 truncate text-[10px] leading-tight text-slate-500">
+                Target ≥90%
+                {kpis?.avgAgeDays != null ? ` · avg ${kpis.avgAgeDays}d` : ''}
               </p>
             </button>
-          </div>
 
-          <div className="mb-6 grid gap-3 sm:grid-cols-3">
             <button
               type="button"
               onClick={() => openQueue('all')}
-              className="group rounded-2xl border border-white/80 bg-white/90 px-4 py-3 text-left shadow-sm transition hover:border-sky-200 hover:shadow-md"
+              title="Show all open"
+              className="rounded-xl border border-sky-100/80 bg-white px-3 py-2 text-left shadow-sm transition hover:border-sky-200 hover:bg-sky-50/40"
             >
-              <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-                Open portfolio
-              </p>
-              <p className="text-xl font-bold text-sky-800">{kpis?.open ?? 0}</p>
-              <p className="text-xs text-slate-500">of {kpis?.total ?? 0} in filter</p>
-              <p className="mt-1 text-xs font-medium text-brand-700 opacity-0 transition group-hover:opacity-100">
-                Show all open →
+              <div className="flex items-center justify-between gap-1">
+                <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+                  Open
+                </span>
+              </div>
+              <p className="mt-0.5 text-2xl font-bold leading-none text-sky-800">{kpis?.open ?? 0}</p>
+              <p className="mt-1 truncate text-[10px] leading-tight text-slate-500">
+                of {kpis?.total ?? 0} in filter
               </p>
             </button>
-            <div className="rounded-2xl border border-white/80 bg-white/90 px-4 py-3 shadow-sm">
-              <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-                Instructed → issued
-              </p>
-              <p className="text-xl font-bold text-slate-800">
+
+            <div className="rounded-xl border border-slate-200/80 bg-white px-3 py-2 shadow-sm">
+              <div className="flex items-center justify-between gap-1">
+                <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+                  Cycle time
+                </span>
+              </div>
+              <p className="mt-0.5 text-2xl font-bold leading-none text-slate-800">
                 {summary.cycleTime.avgInstructedToIssuedDays != null
                   ? `${summary.cycleTime.avgInstructedToIssuedDays}d`
                   : '—'}
               </p>
-              <p className="text-xs text-slate-500">
-                {summary.cycleTime.sampleSizeIssued} samples · in progress{' '}
-                {summary.cycleTime.avgInProgressDays != null
-                  ? `${summary.cycleTime.avgInProgressDays}d`
-                  : '—'}
+              <p className="mt-1 truncate text-[10px] leading-tight text-slate-500">
+                Instructed → issued
+                {summary.cycleTime.sampleSizeIssued
+                  ? ` · ${summary.cycleTime.sampleSizeIssued} samples`
+                  : ''}
               </p>
             </div>
+
             <button
               type="button"
               onClick={() => openQueue('review')}
-              className="group rounded-2xl border border-white/80 bg-white/90 px-4 py-3 text-left shadow-sm transition hover:border-violet-200 hover:shadow-md"
+              title="Open review queue"
+              className="col-span-2 rounded-xl border border-violet-100/80 bg-white px-3 py-2 text-left shadow-sm transition hover:border-violet-200 hover:bg-violet-50/40 sm:col-span-1"
             >
-              <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-                Final review dwell
-              </p>
-              <p className="text-xl font-bold text-violet-800">
+              <div className="flex items-center justify-between gap-1">
+                <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+                  In review
+                </span>
+              </div>
+              <p className="mt-0.5 text-2xl font-bold leading-none text-violet-800">
                 {(decisions?.pendingReview ?? 0) + (decisions?.underReview ?? 0)}
               </p>
-              <p className="text-xs text-slate-500">
-                {decisions?.pendingReview ?? 0} submitted for review ·{' '}
-                {decisions?.underReview ?? 0} final review
-                {summary.cycleTime.avgUnderReviewDays != null
-                  ? ` · avg ${summary.cycleTime.avgUnderReviewDays}d in final review`
-                  : ''}
-              </p>
-              <p className="mt-1 text-xs font-medium text-brand-700 opacity-0 transition group-hover:opacity-100">
-                Open review queue →
+              <p className="mt-1 truncate text-[10px] leading-tight text-slate-500">
+                {decisions?.pendingReview ?? 0} for review · {decisions?.underReview ?? 0} final
               </p>
             </button>
           </div>
 
-          <div className="mb-6 grid gap-6 xl:grid-cols-5">
+          <div className="mb-4 grid gap-4 xl:grid-cols-5">
             {/* Action queue — primary decision surface */}
-            <div id="action-queue" className="section-card xl:col-span-3">
-              <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+            <div id="action-queue" className="section-card !p-4 sm:!p-5 xl:col-span-3">
+              <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
                 <div>
                   <h2 className="text-sm font-semibold text-brand-800">Action queue</h2>
                   <p className="text-xs text-slate-500">
                     Prioritised for decisions — critical & overdue first
                   </p>
                 </div>
-                <div className="flex flex-wrap gap-1.5">
+                <div className="flex flex-wrap gap-1">
                   {(
                     [
                       ['attention', 'Needs action'],
                       ['overdue', 'Overdue'],
                       ['at_risk', 'At risk'],
                       ['unassigned', 'Unassigned'],
-                      ['technical', 'Submitted for review'],
-                      ['final_review', 'Final review'],
+                      ['technical', 'For review'],
+                      ['final_review', 'Final'],
                       ['review', 'All review'],
                       ['all', 'All open'],
                     ] as const
@@ -559,7 +560,7 @@ export function AnalyticsDashboard() {
                       key={key}
                       type="button"
                       onClick={() => setQueueFilter(key)}
-                      className={`rounded-full px-2.5 py-1 text-[11px] font-semibold transition ${
+                      className={`rounded-full px-2 py-0.5 text-[10px] font-semibold transition ${
                         queueFilter === key
                           ? 'bg-brand-600 text-white'
                           : 'bg-slate-100 text-slate-600 hover:bg-brand-50 hover:text-brand-800'
@@ -572,9 +573,9 @@ export function AnalyticsDashboard() {
               </div>
 
               {filteredQueue.length === 0 ? (
-                <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50/80 py-10 text-center">
-                  <CheckCircle2 className="mx-auto h-8 w-8 text-emerald-500" />
-                  <p className="mt-2 text-sm font-medium text-slate-700">Nothing in this view</p>
+                <div className="rounded-lg border border-dashed border-slate-200 bg-slate-50/80 py-6 text-center">
+                  <CheckCircle2 className="mx-auto h-6 w-6 text-emerald-500" />
+                  <p className="mt-1.5 text-sm font-medium text-slate-700">Nothing in this view</p>
                   <p className="text-xs text-slate-500">Switch filter or clear period constraints</p>
                 </div>
               ) : (
@@ -646,27 +647,27 @@ export function AnalyticsDashboard() {
             </div>
 
             {/* Side decisions */}
-            <div className="space-y-6 xl:col-span-2">
-              <div className="section-card">
-                <div className="mb-3 flex items-center gap-2">
+            <div className="space-y-4 xl:col-span-2">
+              <div className="section-card !p-4 sm:!p-5">
+                <div className="mb-2.5 flex items-center gap-2">
                   <ClipboardList className="h-4 w-4 text-brand-600" />
                   <h2 className="text-sm font-semibold text-brand-800">Pipeline bottlenecks</h2>
                 </div>
                 {bottleneckStages.length === 0 ? (
                   <p className="text-sm text-slate-500">No staging backlog — pipeline is flowing.</p>
                 ) : (
-                  <ul className="space-y-2">
+                  <ul className="space-y-1.5">
                     {bottleneckStages.map((stage) => (
                       <li key={stage.key}>
                         <Link
                           href={stage.href}
-                          className="flex items-center justify-between rounded-xl border border-slate-100 bg-slate-50/80 px-3 py-2.5 transition hover:border-brand-200 hover:bg-brand-50/60"
+                          className="flex items-center justify-between rounded-lg border border-slate-100 bg-slate-50/80 px-2.5 py-2 transition hover:border-brand-200 hover:bg-brand-50/60"
                         >
-                          <div>
-                            <p className="text-sm font-semibold text-slate-800">{stage.label}</p>
-                            <p className="text-xs text-slate-500">{stage.hint}</p>
+                          <div className="min-w-0">
+                            <p className="truncate text-sm font-semibold text-slate-800">{stage.label}</p>
+                            <p className="truncate text-[11px] text-slate-500">{stage.hint}</p>
                           </div>
-                          <span className="rounded-lg bg-white px-2.5 py-1 text-sm font-bold text-brand-800 shadow-sm">
+                          <span className="ml-2 shrink-0 rounded-md bg-white px-2 py-0.5 text-sm font-bold text-brand-800 shadow-sm">
                             {stage.count}
                           </span>
                         </Link>
@@ -676,37 +677,37 @@ export function AnalyticsDashboard() {
                 )}
               </div>
 
-              <div className="section-card">
-                <div className="mb-3 flex items-center gap-2">
+              <div className="section-card !p-4 sm:!p-5">
+                <div className="mb-2.5 flex items-center gap-2">
                   <Users className="h-4 w-4 text-brand-600" />
                   <h2 className="text-sm font-semibold text-brand-800">Capacity alerts</h2>
                 </div>
                 {strainedAssessors.length === 0 ? (
                   <p className="text-sm text-slate-500">No overloaded assessors in this filter.</p>
                 ) : (
-                  <ul className="space-y-2.5">
+                  <ul className="space-y-2">
                     {strainedAssessors.map((a) => (
-                      <li key={a.name} className="rounded-xl border border-slate-100 px-3 py-2">
+                      <li key={a.name} className="rounded-lg border border-slate-100 px-2.5 py-2">
                         <div className="flex items-center justify-between gap-2">
                           <p className="truncate text-sm font-semibold text-slate-800">{a.name}</p>
                           {a.overdue > 0 ? (
-                            <span className="shrink-0 text-xs font-bold text-red-700">
+                            <span className="shrink-0 text-[11px] font-bold text-red-700">
                               {a.overdue} overdue
                             </span>
                           ) : (
-                            <span className="shrink-0 text-xs font-medium text-amber-700">
+                            <span className="shrink-0 text-[11px] font-medium text-amber-700">
                               {a.open} open
                             </span>
                           )}
                         </div>
-                        <div className="mt-1.5 flex gap-3 text-[11px] text-slate-500">
+                        <div className="mt-1 flex gap-2.5 text-[10px] text-slate-500">
                           <span>{a.open} open</span>
                           <span>
-                            Avg age {a.avgAgeDays != null ? `${a.avgAgeDays}d` : '—'}
+                            Avg {a.avgAgeDays != null ? `${a.avgAgeDays}d` : '—'}
                           </span>
                           <span>SLA {a.slaPct != null ? `${a.slaPct}%` : '—'}</span>
                         </div>
-                        <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-slate-100">
+                        <div className="mt-1.5 h-1 overflow-hidden rounded-full bg-slate-100">
                           <div
                             className="h-full rounded-full"
                             style={{
@@ -722,7 +723,7 @@ export function AnalyticsDashboard() {
                 {(decisions?.unassigned ?? 0) > 0 && (
                   <Link
                     href="/datasheets?unallocated=1"
-                    className="mt-3 inline-flex items-center gap-1 text-xs font-semibold text-brand-700 hover:text-brand-900"
+                    className="mt-2.5 inline-flex items-center gap-1 text-xs font-semibold text-brand-700 hover:text-brand-900"
                   >
                     Assign {decisions?.unassigned} unallocated tasks
                     <ArrowRight className="h-3.5 w-3.5" />

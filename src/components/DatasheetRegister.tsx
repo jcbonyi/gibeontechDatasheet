@@ -9,6 +9,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Columns3,
+  Copy,
   Download,
   FileSpreadsheet,
   FileText,
@@ -26,6 +27,7 @@ import {
   canAssignDatasheet,
   canDeleteDatasheet,
   canOverrideAnyStatus,
+  canReviewDatasheet,
   canViewAllDatasheets,
 } from '@/lib/permissions';
 import { ROLE_LABELS, type DatasheetStatus, type UserRole } from '@/types/datasheet';
@@ -39,6 +41,7 @@ import type { AgeBand } from '@/lib/tracking';
 import { SLA_DAYS } from '@/lib/tracking';
 import { CANCEL_REASONS, SAVED_VIEWS, normalizeDelayNotes, type SavedViewId } from '@/lib/opsConfig';
 import { StatusBadge } from '@/components/StatusBadge';
+import { DuplicateReviewModal } from '@/components/DuplicateReviewModal';
 
 interface DatasheetRow {
   id: number;
@@ -129,11 +132,16 @@ export function DatasheetRegister() {
   const [canScrollLeft, setCanScrollLeft] = useState(false);
   const [canScrollRight, setCanScrollRight] = useState(false);
   const boardScrollRef = useRef<HTMLDivElement>(null);
+  const [duplicateOpen, setDuplicateOpen] = useState(false);
+  const [duplicateGroupCount, setDuplicateGroupCount] = useState(0);
 
   const canAssign = user ? canAssignDatasheet(user) : false;
   const canOverrideStatus = user ? canOverrideAnyStatus(user) : false;
   const canDelete = user ? canDeleteDatasheet(user) : false;
   const viewAll = user ? canViewAllDatasheets(user.role) : false;
+  const canManageDuplicates = user
+    ? canReviewDatasheet(user) || canOverrideAnyStatus(user)
+    : false;
   const isAdmin = user?.role === 'Admin';
 
   const filterParams = useCallback(() => {
@@ -176,6 +184,24 @@ export function DatasheetRegister() {
   useEffect(() => {
     load();
   }, [load]);
+
+  const loadDuplicateCount = useCallback(async () => {
+    if (!canManageDuplicates || !viewAll) {
+      setDuplicateGroupCount(0);
+      return;
+    }
+    try {
+      const res = await fetch('/api/datasheets/duplicates');
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) setDuplicateGroupCount(Number(data.groupCount) || 0);
+    } catch {
+      /* ignore */
+    }
+  }, [canManageDuplicates, viewAll]);
+
+  useEffect(() => {
+    loadDuplicateCount();
+  }, [loadDuplicateCount, datasheets.length]);
 
   useEffect(() => {
     if (!canAssign) return;
@@ -651,12 +677,42 @@ export function DatasheetRegister() {
             <Download className="h-4 w-4" />
             CSV
           </button>
+          {canManageDuplicates && (
+            <button
+              type="button"
+              onClick={() => setDuplicateOpen(true)}
+              className={`btn-secondary ${
+                duplicateGroupCount > 0 ? '!border-amber-300 !bg-amber-50 !text-amber-900' : ''
+              }`}
+            >
+              <Copy className="h-4 w-4" />
+              Duplicates
+              {duplicateGroupCount > 0 ? ` (${duplicateGroupCount})` : ''}
+            </button>
+          )}
           <Link href="/datasheets/new" className="btn-primary" data-shortcut="new-instruction">
             <Plus className="h-4 w-4" />
             New instruction
           </Link>
         </div>
       </div>
+
+      {canManageDuplicates && duplicateGroupCount > 0 && (
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+          <p>
+            <strong>{duplicateGroupCount}</strong> duplicate group
+            {duplicateGroupCount === 1 ? '' : 's'} found among open tasks — review and keep one file
+            per group.
+          </p>
+          <button
+            type="button"
+            onClick={() => setDuplicateOpen(true)}
+            className="rounded-lg bg-amber-800 px-3 py-1.5 text-xs font-semibold text-white hover:bg-amber-900"
+          >
+            Review duplicates
+          </button>
+        </div>
+      )}
 
       {stats.overdue > 0 && (
         <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
@@ -1056,6 +1112,15 @@ export function DatasheetRegister() {
           )}
         </div>
       )}
+
+      <DuplicateReviewModal
+        open={duplicateOpen}
+        onClose={() => setDuplicateOpen(false)}
+        onResolved={() => {
+          load();
+          loadDuplicateCount();
+        }}
+      />
     </div>
   );
 }
