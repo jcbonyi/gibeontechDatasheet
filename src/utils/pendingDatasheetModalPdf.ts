@@ -30,6 +30,15 @@ export type DashboardDetailPdfInput =
       title: string;
       subtitle?: string;
       rows: ProductionDrillEntry[];
+      totalsContext?: {
+        queryLabel: string;
+        queryJobs: number;
+        queryAmount: number;
+        monthLabel: string;
+        monthJobs: number;
+        monthAmount: number;
+        asOfDate: string;
+      };
     }
   | {
       kind: 'datasheet';
@@ -115,7 +124,7 @@ function drawPdfFooter(pdf: jsPDF): void {
 export function downloadDashboardDetailModalPdf(input: DashboardDetailPdfInput): void {
   const pdf =
     input.kind === 'production'
-      ? buildProductionModalPdf(input.title, input.subtitle, input.rows)
+      ? buildProductionModalPdf(input.title, input.subtitle, input.rows, input.totalsContext)
       : buildDatasheetModalPdf(input.title, input.subtitle, input.rows);
   pdf.save(`${safeFilename(input.title)}.pdf`);
 }
@@ -133,6 +142,15 @@ export function buildProductionModalPdf(
   title: string,
   subtitle: string | undefined,
   rows: ProductionDrillEntry[],
+  totalsContext?: {
+    queryLabel: string;
+    queryJobs: number;
+    queryAmount: number;
+    monthLabel: string;
+    monthJobs: number;
+    monthAmount: number;
+    asOfDate: string;
+  },
 ): jsPDF {
   const pdf = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
   const margin = 12;
@@ -144,6 +162,24 @@ export function buildProductionModalPdf(
     subtitle,
     `${rows.length} matching record${rows.length === 1 ? '' : 's'}`,
   );
+
+  if (totalsContext) {
+    pdf.setFont('helvetica', 'bold');
+    pdf.setFontSize(8);
+    pdf.setTextColor(INK.r, INK.g, INK.b);
+    pdf.text(
+      `Query total: ${totalsContext.queryJobs} jobs · ${formatMoney(totalsContext.queryAmount)}  (${totalsContext.queryLabel})`,
+      margin,
+      y,
+    );
+    y += 4;
+    pdf.text(
+      `Month production as at ${formatDisplayDate(totalsContext.asOfDate)}: ${totalsContext.monthJobs} jobs · ${formatMoney(totalsContext.monthAmount)}`,
+      margin,
+      y,
+    );
+    y += 6;
+  }
 
   const body = rows.map((r) => [
     formatDisplayDate(r.production_date.slice(0, 10)),

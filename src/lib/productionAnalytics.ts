@@ -1,5 +1,5 @@
 import type { DbProductionEntry, DbProductionTarget } from '@/lib/productionDb';
-import { formatMoney } from '@/lib/productionConfig';
+import { formatDisplayDate, formatMoney } from '@/lib/productionConfig';
 import { normalizeDisplayName, normalizeNameKey, preferDisplayName } from '@/lib/nameNormalize';
 
 function dateOnly(v: string): string {
@@ -356,3 +356,247 @@ export function resolveChartPeriodRange(
 }
 
 export { formatMoney, isoDate, startOfWeek };
+
+// ── Period comparison (day/week vs prior month or custom) ──────────────────
+
+export type ComparePreset =
+  | 'off'
+  | 'todayVsSameDayLastMonth'
+  | 'thisWeekVsSameWeekLastMonth'
+  | 'customDays'
+  | 'customWeeks';
+
+export const COMPARE_PRESETS: { key: ComparePreset; label: string; hint: string }[] = [
+  { key: 'off', label: 'Off', hint: 'No comparison' },
+  {
+    key: 'todayVsSameDayLastMonth',
+    label: 'Today vs same day last month',
+    hint: 'e.g. 25 Sep vs 25 Aug',
+  },
+  {
+    key: 'thisWeekVsSameWeekLastMonth',
+    label: 'This week vs same week last month',
+    hint: 'Aligned weekdays Mon–today',
+  },
+  { key: 'customDays', label: 'Custom days', hint: 'Pick two dates' },
+  { key: 'customWeeks', label: 'Custom weeks', hint: 'Pick two week starts' },
+];
+
+export interface DateRange {
+  fromDate: string;
+  toDate: string;
+  label: string;
+}
+
+export interface CompareRanges {
+  primary: DateRange;
+  compare: DateRange;
+}
+
+/** Same calendar day one month earlier (clamped to month length). */
+export function sameCalendarDayLastMonth(asOf = new Date()): Date {
+  const day = asOf.getDate();
+  const lastDayPrev = new Date(asOf.getFullYear(), asOf.getMonth(), 0).getDate();
+  return new Date(asOf.getFullYear(), asOf.getMonth() - 1, Math.min(day, lastDayPrev));
+}
+
+export function addDaysIso(iso: string, days: number): string {
+  const d = new Date(`${iso.slice(0, 10)}T00:00:00`);
+  d.setDate(d.getDate() + days);
+  return isoDate(d);
+}
+
+export function daysInclusive(fromDate: string, toDate: string): number {
+  const a = new Date(`${fromDate.slice(0, 10)}T00:00:00`);
+  const b = new Date(`${toDate.slice(0, 10)}T00:00:00`);
+  return Math.max(0, Math.round((b.getTime() - a.getTime()) / 86400000));
+}
+
+export function parseIsoDateLocal(iso: string): Date {
+  const s = iso.slice(0, 10);
+  const [y, m, d] = s.split('-').map(Number);
+  return new Date(y, (m || 1) - 1, d || 1);
+}
+
+/** Month-to-date for the calendar month of `asOfIso`, through that date inclusive. */
+export function monthToDateRange(asOfIso: string): DateRange {
+  const d = parseIsoDateLocal(asOfIso);
+  const start = new Date(d.getFullYear(), d.getMonth(), 1);
+  const toDate = isoDate(d);
+  const fromDate = isoDate(start);
+  const monthName = d.toLocaleString('en-GB', { month: 'short', year: 'numeric' });
+  return {
+    fromDate,
+    toDate,
+    label: `Month to ${formatDisplayDate(toDate)} (${monthName})`,
+  };
+}
+
+export function resolveCompareRanges(
+  preset: ComparePreset,
+  opts: {
+    asOf?: Date;
+    primaryDate?: string;
+    compareDate?: string;
+    primaryWeekStart?: string;
+    compareWeekStart?: string;
+  } = {},
+): CompareRanges | null {
+  if (preset === 'off') return null;
+  const asOf = opts.asOf ?? new Date();
+  const today = isoDate(asOf);
+
+  if (preset === 'todayVsSameDayLastMonth') {
+    const prior = isoDate(sameCalendarDayLastMonth(asOf));
+    return {
+      primary: { fromDate: today, toDate: today, label: `Today (${formatDisplayDate(today)})` },
+      compare: {
+        fromDate: prior,
+        toDate: prior,
+        label: `Same day last month (${formatDisplayDate(prior)})`,
+      },
+    };
+  }
+
+  if (preset === 'thisWeekVsSameWeekLastMonth') {
+    const weekStart = startOfWeek(asOf);
+    const primaryFrom = isoDate(weekStart);
+    const primaryTo = today;
+    const span = daysInclusive(primaryFrom, primaryTo);
+    const anchor = sameCalendarDayLastMonth(asOf);
+    const compareStart = startOfWeek(anchor);
+    const compareFrom = isoDate(compareStart);
+    const compareTo = addDaysIso(compareFrom, span);
+    return {
+      primary: {
+        fromDate: primaryFrom,
+        toDate: primaryTo,
+        label: `This week (${formatDisplayDate(primaryFrom)} → ${formatDisplayDate(primaryTo)})`,
+      },
+      compare: {
+        fromDate: compareFrom,
+        toDate: compareTo,
+        label: `Same week last month (${formatDisplayDate(compareFrom)} → ${formatDisplayDate(compareTo)})`,
+      },
+    };
+  }
+
+  if (preset === 'customDays') {
+    const a = (opts.primaryDate || today).slice(0, 10);
+    const b = (opts.compareDate || isoDate(sameCalendarDayLastMonth(asOf))).slice(0, 10);
+    return {
+      primary: { fromDate: a, toDate: a, label: `Day A (${formatDisplayDate(a)})` },
+      compare: { fromDate: b, toDate: b, label: `Day B (${formatDisplayDate(b)})` },
+    };
+  }
+
+  if (preset === 'customWeeks') {
+    const rawA = (opts.primaryWeekStart || isoDate(startOfWeek(asOf))).slice(0, 10);
+    const rawB = (
+      opts.compareWeekStart || isoDate(startOfWeek(sameCalendarDayLastMonth(asOf)))
+    ).slice(0, 10);
+    const startA = isoDate(startOfWeek(parseIsoDateLocal(rawA)));
+    const startB = isoDate(startOfWeek(parseIsoDateLocal(rawB)));
+    const endA = addDaysIso(startA, 6);
+    const endB = addDaysIso(startB, 6);
+    // Cap primary week end at today when it is the current week
+    const primaryTo = endA > today && startA <= today ? today : endA;
+    const span = daysInclusive(startA, primaryTo);
+    const compareTo = addDaysIso(startB, span);
+    return {
+      primary: {
+        fromDate: startA,
+        toDate: primaryTo,
+        label: `Week A (${formatDisplayDate(startA)} → ${formatDisplayDate(primaryTo)})`,
+      },
+      compare: {
+        fromDate: startB,
+        toDate: compareTo,
+        label: `Week B (${formatDisplayDate(startB)} → ${formatDisplayDate(compareTo)})`,
+      },
+    };
+  }
+
+  return null;
+}
+
+export function entriesInDateRange<T extends { production_date: string; status?: string }>(
+  rows: T[],
+  fromDate: string,
+  toDate: string,
+): T[] {
+  const from = fromDate.slice(0, 10);
+  const to = toDate.slice(0, 10);
+  return rows.filter((r) => {
+    if (r.status === 'cancelled') return false;
+    const d = String(r.production_date || '').slice(0, 10);
+    return d >= from && d <= to;
+  });
+}
+
+export function sumProductionAmount(
+  rows: { amount?: number | null; status?: string }[],
+): { jobs: number; amount: number } {
+  let jobs = 0;
+  let amount = 0;
+  for (const r of rows) {
+    if (r.status === 'cancelled') continue;
+    jobs += 1;
+    amount += Number(r.amount) || 0;
+  }
+  return { jobs, amount: Math.round(amount * 100) / 100 };
+}
+
+const WEEKDAY_SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+/**
+ * Align primary vs compare by day offset within each range for trend charts.
+ * Single-day ranges yield one point.
+ */
+export function buildCompareTrendPoints(
+  primaryRows: { production_date: string; amount?: number | null; status?: string }[],
+  compareRows: { production_date: string; amount?: number | null; status?: string }[],
+  primary: DateRange,
+  compare: DateRange,
+  metric: 'jobs' | 'amount' = 'jobs',
+): {
+  label: string;
+  a: number;
+  b: number;
+  meta: { primaryDate: string; compareDate: string };
+}[] {
+  const span = daysInclusive(primary.fromDate, primary.toDate);
+  const points: {
+    label: string;
+    a: number;
+    b: number;
+    meta: { primaryDate: string; compareDate: string };
+  }[] = [];
+
+  for (let i = 0; i <= span; i++) {
+    const pDate = addDaysIso(primary.fromDate, i);
+    const cDate = addDaysIso(compare.fromDate, i);
+    if (pDate > primary.toDate) break;
+    const pDay = entriesInDateRange(primaryRows, pDate, pDate);
+    const cDay = cDate <= compare.toDate ? entriesInDateRange(compareRows, cDate, cDate) : [];
+    const pSum = sumProductionAmount(pDay);
+    const cSum = sumProductionAmount(cDay);
+    const dow = WEEKDAY_SHORT[parseIsoDateLocal(pDate).getDay()] || '';
+    const label =
+      span === 0
+        ? formatDisplayDate(pDate)
+        : `${dow} ${pDate.slice(8)}`;
+    points.push({
+      label,
+      a: metric === 'jobs' ? pSum.jobs : pSum.amount,
+      b: metric === 'jobs' ? cSum.jobs : cSum.amount,
+      meta: { primaryDate: pDate, compareDate: cDate },
+    });
+  }
+  return points;
+}
+
+export function pctChange(current: number, previous: number): number | null {
+  if (previous === 0) return current === 0 ? 0 : null;
+  return Math.round(((current - previous) / previous) * 1000) / 10;
+}

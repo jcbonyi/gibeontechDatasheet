@@ -8,6 +8,7 @@ import {
   ClipboardList,
   FileSpreadsheet,
   FileText,
+  GitCompareArrows,
   Plus,
   RefreshCw,
   Target,
@@ -16,12 +17,25 @@ import {
   Users,
 } from 'lucide-react';
 import { formatMoney, formatDisplayDate } from '@/lib/productionConfig';
-import { SimpleBarChart, SimpleHorizontalBars, SimpleLineChart } from '@/components/SimpleCharts';
+import {
+  SimpleBarChart,
+  SimpleCompareBars,
+  SimpleHorizontalBars,
+  SimpleLineChart,
+} from '@/components/SimpleCharts';
 import { NotificationBell } from '@/components/NotificationBell';
 import {
   CHART_PERIODS,
+  COMPARE_PRESETS,
+  buildCompareTrendPoints,
+  entriesInDateRange,
+  monthToDateRange,
+  pctChange,
   resolveChartPeriodRange,
+  resolveCompareRanges,
+  sumProductionAmount,
   type ChartPeriod,
+  type ComparePreset,
   type ProductionSummary,
 } from '@/lib/productionAnalytics';
 import type { AnalyticsSummary } from '@/lib/tracking';
@@ -45,6 +59,7 @@ import {
 import {
   ProductionDashboardDetailModal,
   type DashboardDetailModalState,
+  type ProductionTotalsContext,
 } from '@/components/ProductionDashboardDetailModal';
 import { isOpenStatus } from '@/lib/status';
 
@@ -108,7 +123,10 @@ function mapDatasheetEntries(raw: unknown): DatasheetDrillEntry[] {
 }
 
 function isoToday(): string {
-  const d = new Date();
+  return isoTodayFromDate(new Date());
+}
+
+function isoTodayFromDate(d: Date): string {
   const y = d.getFullYear();
   const m = String(d.getMonth() + 1).padStart(2, '0');
   const day = String(d.getDate()).padStart(2, '0');
@@ -116,14 +134,15 @@ function isoToday(): string {
 }
 
 function startOfWeek(): string {
-  const d = new Date();
-  const day = d.getDay();
+  return startOfWeekFromDate(new Date());
+}
+
+function startOfWeekFromDate(d: Date): string {
+  const x = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  const day = x.getDay();
   const diff = day === 0 ? -6 : 1 - day;
-  d.setDate(d.getDate() + diff);
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const dayNum = String(d.getDate()).padStart(2, '0');
-  return `${y}-${m}-${dayNum}`;
+  x.setDate(x.getDate() + diff);
+  return isoTodayFromDate(x);
 }
 
 function monthStart(): string {
@@ -271,19 +290,57 @@ export function ProductionDashboard() {
   const [periodEntries, setPeriodEntries] = useState<ProductionDrillEntry[]>([]);
   const [monthEntries, setMonthEntries] = useState<ProductionDrillEntry[]>([]);
   const [openDatasheets, setOpenDatasheets] = useState<DatasheetDrillEntry[]>([]);
+  const [comparePreset, setComparePreset] = useState<ComparePreset>('off');
+  const [comparePrimaryDate, setComparePrimaryDate] = useState(() => isoToday());
+  const [compareSecondaryDate, setCompareSecondaryDate] = useState(() => {
+    const d = new Date();
+    d.setMonth(d.getMonth() - 1);
+    return isoTodayFromDate(d);
+  });
+  const [comparePrimaryWeek, setComparePrimaryWeek] = useState(() => startOfWeek());
+  const [compareSecondaryWeek, setCompareSecondaryWeek] = useState(() => {
+    const d = new Date();
+    d.setMonth(d.getMonth() - 1);
+    return startOfWeekFromDate(d);
+  });
+  const [compareEntries, setCompareEntries] = useState<ProductionDrillEntry[]>([]);
+  const [compareLoading, setCompareLoading] = useState(false);
 
   const chartRange = useMemo(() => resolveChartPeriodRange(chartPeriod), [chartPeriod]);
+
+  const compareRanges = useMemo(
+    () =>
+      resolveCompareRanges(comparePreset, {
+        primaryDate: comparePrimaryDate,
+        compareDate: compareSecondaryDate,
+        primaryWeekStart: comparePrimaryWeek,
+        compareWeekStart: compareSecondaryWeek,
+      }),
+    [
+      comparePreset,
+      comparePrimaryDate,
+      compareSecondaryDate,
+      comparePrimaryWeek,
+      compareSecondaryWeek,
+    ],
+  );
 
   const loadOverview = useCallback(async () => {
     setLoading(true);
     const todayLocal = isoToday();
     const monthFromLocal = monthStart();
+    const wideFrom = (() => {
+      const d = new Date();
+      d.setMonth(d.getMonth() - 2);
+      d.setDate(1);
+      return isoTodayFromDate(d);
+    })();
     try {
       const [prodRes, dsRes, dsListRes, monthProdRes] = await Promise.all([
         fetch('/api/production/analytics'),
         fetch('/api/analytics'),
         fetch('/api/datasheets'),
-        fetch(`/api/production?fromDate=${monthFromLocal}&toDate=${todayLocal}`),
+        fetch(`/api/production?fromDate=${wideFrom}&toDate=${todayLocal}`),
       ]);
       const prodData = await prodRes.json().catch(() => ({}));
       if (!prodRes.ok) throw new Error(prodData.error || 'Failed to load KPIs');
@@ -297,6 +354,7 @@ export function ProductionDashboard() {
       setOpenDatasheets(sheets.filter((r) => isOpenStatus(r.status)));
 
       const monthProdData = await monthProdRes.json().catch(() => ({}));
+      // Pool covers ~2 prior months for MTD totals on any query date in range
       setMonthEntries(monthProdRes.ok ? mapProductionEntries(monthProdData.entries) : []);
     } catch {
       setSummary(null);
@@ -333,6 +391,38 @@ export function ProductionDashboard() {
     }
   }, [chartRange.fromDate, chartRange.toDate]);
 
+  const loadCompare = useCallback(async () => {
+    if (!compareRanges) {
+      setCompareEntries([]);
+      return;
+    }
+    setCompareLoading(true);
+    try {
+      const primaryMtd = monthToDateRange(compareRanges.primary.toDate);
+      const compareMtd = monthToDateRange(compareRanges.compare.toDate);
+      const fromDate = [
+        compareRanges.primary.fromDate,
+        compareRanges.compare.fromDate,
+        primaryMtd.fromDate,
+        compareMtd.fromDate,
+      ].sort()[0];
+      const toDate = [
+        compareRanges.primary.toDate,
+        compareRanges.compare.toDate,
+        primaryMtd.toDate,
+        compareMtd.toDate,
+      ].sort()
+        .slice(-1)[0];
+      const res = await fetch(`/api/production?fromDate=${fromDate}&toDate=${toDate}`);
+      const data = await res.json().catch(() => ({}));
+      setCompareEntries(res.ok ? mapProductionEntries(data.entries) : []);
+    } catch {
+      setCompareEntries([]);
+    } finally {
+      setCompareLoading(false);
+    }
+  }, [compareRanges]);
+
   useEffect(() => {
     loadOverview();
   }, [loadOverview]);
@@ -341,9 +431,14 @@ export function ProductionDashboard() {
     loadCharts();
   }, [loadCharts]);
 
+  useEffect(() => {
+    loadCompare();
+  }, [loadCompare]);
+
   const refresh = () => {
     loadOverview();
     loadCharts();
+    loadCompare();
   };
 
   const k = summary?.kpis;
@@ -393,22 +488,109 @@ export function ProductionDashboard() {
     () => datasheetPending?.pendingByAssessorAging ?? [],
     [datasheetPending],
   );
+
+  const comparePrimaryRows = useMemo(() => {
+    if (!compareRanges) return [];
+    return entriesInDateRange(
+      compareEntries,
+      compareRanges.primary.fromDate,
+      compareRanges.primary.toDate,
+    );
+  }, [compareEntries, compareRanges]);
+
+  const compareSecondaryRows = useMemo(() => {
+    if (!compareRanges) return [];
+    return entriesInDateRange(
+      compareEntries,
+      compareRanges.compare.fromDate,
+      compareRanges.compare.toDate,
+    );
+  }, [compareEntries, compareRanges]);
+
+  const comparePrimaryTotals = useMemo(
+    () => sumProductionAmount(comparePrimaryRows),
+    [comparePrimaryRows],
+  );
+  const compareSecondaryTotals = useMemo(
+    () => sumProductionAmount(compareSecondaryRows),
+    [compareSecondaryRows],
+  );
+
+  const compareJobsTrend = useMemo(() => {
+    if (!compareRanges) return [];
+    return buildCompareTrendPoints(
+      comparePrimaryRows,
+      compareSecondaryRows,
+      compareRanges.primary,
+      compareRanges.compare,
+      'jobs',
+    );
+  }, [compareRanges, comparePrimaryRows, compareSecondaryRows]);
+
+  const compareAmountTrend = useMemo(() => {
+    if (!compareRanges) return [];
+    return buildCompareTrendPoints(
+      comparePrimaryRows,
+      compareSecondaryRows,
+      compareRanges.primary,
+      compareRanges.compare,
+      'amount',
+    );
+  }, [compareRanges, comparePrimaryRows, compareSecondaryRows]);
+
+  const jobsDelta = pctChange(comparePrimaryTotals.jobs, compareSecondaryTotals.jobs);
+  const amountDelta = pctChange(comparePrimaryTotals.amount, compareSecondaryTotals.amount);
+
   const exportBase = `/api/production/export?fromDate=${chartRange.fromDate}&toDate=${chartRange.toDate}&pack=dashboard`;
   const periodRegisterHref = registerHref({
     fromDate: chartRange.fromDate,
     toDate: chartRange.toDate,
   });
 
+  const buildTotalsContext = useCallback(
+    (queryRows: ProductionDrillEntry[], asOfDate: string, queryLabel: string): ProductionTotalsContext => {
+      const query = sumProductionAmount(queryRows);
+      const mtdRange = monthToDateRange(asOfDate);
+      const mtdRows = entriesInDateRange(compareEntries, mtdRange.fromDate, mtdRange.toDate);
+      // Fall back to monthEntries / periodEntries if compare pool doesn't cover MTD
+      const mtdFallback =
+        mtdRows.length > 0
+          ? mtdRows
+          : entriesInDateRange(
+              [...compareEntries, ...monthEntries, ...periodEntries],
+              mtdRange.fromDate,
+              mtdRange.toDate,
+            );
+      const month = sumProductionAmount(mtdFallback);
+      return {
+        queryLabel,
+        queryJobs: query.jobs,
+        queryAmount: query.amount,
+        monthLabel: mtdRange.label,
+        monthJobs: month.jobs,
+        monthAmount: month.amount,
+        asOfDate: asOfDate.slice(0, 10),
+      };
+    },
+    [compareEntries, monthEntries, periodEntries],
+  );
+
   const showProductionList = (
     title: string,
     rows: ProductionDrillEntry[],
     subtitle?: string,
+    totalsContext?: ProductionTotalsContext,
+    asOfDate?: string,
   ) => {
+    const asOf = (asOfDate || chartRange.toDate || isoToday()).slice(0, 10);
     setDetail({
       kind: 'production',
       title,
       subtitle,
       rows,
+      totalsContext:
+        totalsContext ??
+        buildTotalsContext(rows, asOf, subtitle || title),
     });
   };
 
@@ -424,10 +606,40 @@ export function ProductionDashboard() {
   const drillDay = (item: { label: string; meta?: Record<string, string> }) => {
     const date = item.meta?.date;
     if (!date) return;
+    const rows = filterProductionByDate(periodEntries, date);
     showProductionList(
       `Production · ${formatDisplayDate(date)}`,
-      filterProductionByDate(periodEntries, date),
+      rows,
       periodLabel,
+      buildTotalsContext(rows, date, `Query · ${formatDisplayDate(date)}`),
+    );
+  };
+
+  const openComparePeriod = (which: 'primary' | 'compare') => {
+    if (!compareRanges) return;
+    const range = which === 'primary' ? compareRanges.primary : compareRanges.compare;
+    const rows = which === 'primary' ? comparePrimaryRows : compareSecondaryRows;
+    showProductionList(
+      range.label,
+      rows,
+      'Period comparison',
+      buildTotalsContext(rows, range.toDate, range.label),
+    );
+  };
+
+  const drillComparePoint = (
+    point: { label: string; a: number; b: number; meta?: Record<string, string> },
+    which: 'a' | 'b',
+  ) => {
+    const date = which === 'a' ? point.meta?.primaryDate : point.meta?.compareDate;
+    if (!date) return;
+    const rows = filterProductionByDate(compareEntries, date);
+    const sideLabel = which === 'a' ? compareRanges?.primary.label : compareRanges?.compare.label;
+    showProductionList(
+      `Production · ${formatDisplayDate(date)}`,
+      rows,
+      sideLabel,
+      buildTotalsContext(rows, date, `Query · ${formatDisplayDate(date)}`),
     );
   };
 
@@ -714,6 +926,180 @@ export function ProductionDashboard() {
                 />
               </ChartPanel>
             </div>
+          </div>
+
+          <div className="section-card mb-4 !p-4 sm:!p-5">
+            <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <h2 className="flex items-center gap-2 text-sm font-semibold text-brand-800">
+                  <GitCompareArrows className="h-4 w-4 text-brand-600" />
+                  Period comparison
+                </h2>
+                <p className="mt-0.5 text-xs text-slate-500">
+                  Compare today / this week with the same day or week last month — or pick custom
+                  dates
+                </p>
+              </div>
+            </div>
+
+            <div className="mb-3 flex flex-wrap gap-1.5" role="tablist" aria-label="Compare preset">
+              {COMPARE_PRESETS.map(({ key, label }) => (
+                <button
+                  key={key}
+                  type="button"
+                  role="tab"
+                  aria-selected={comparePreset === key}
+                  onClick={() => setComparePreset(key)}
+                  className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition ${
+                    comparePreset === key
+                      ? 'border-brand-500 bg-brand-600 text-white shadow-sm'
+                      : 'border-slate-200 bg-white text-slate-600 hover:border-brand-300 hover:bg-brand-50'
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+
+            {comparePreset === 'customDays' && (
+              <div className="mb-3 flex flex-wrap items-end gap-3">
+                <label className="text-xs font-medium text-slate-600">
+                  Day A
+                  <input
+                    type="date"
+                    value={comparePrimaryDate}
+                    onChange={(e) => setComparePrimaryDate(e.target.value)}
+                    className="form-input mt-1 !py-1.5 text-sm"
+                  />
+                </label>
+                <label className="text-xs font-medium text-slate-600">
+                  Day B
+                  <input
+                    type="date"
+                    value={compareSecondaryDate}
+                    onChange={(e) => setCompareSecondaryDate(e.target.value)}
+                    className="form-input mt-1 !py-1.5 text-sm"
+                  />
+                </label>
+              </div>
+            )}
+
+            {comparePreset === 'customWeeks' && (
+              <div className="mb-3 flex flex-wrap items-end gap-3">
+                <label className="text-xs font-medium text-slate-600">
+                  Week A start
+                  <input
+                    type="date"
+                    value={comparePrimaryWeek}
+                    onChange={(e) => setComparePrimaryWeek(e.target.value)}
+                    className="form-input mt-1 !py-1.5 text-sm"
+                  />
+                </label>
+                <label className="text-xs font-medium text-slate-600">
+                  Week B start
+                  <input
+                    type="date"
+                    value={compareSecondaryWeek}
+                    onChange={(e) => setCompareSecondaryWeek(e.target.value)}
+                    className="form-input mt-1 !py-1.5 text-sm"
+                  />
+                </label>
+              </div>
+            )}
+
+            {comparePreset !== 'off' && compareRanges && (
+              <>
+                {compareLoading ? (
+                  <p className="py-6 text-center text-sm text-slate-500">Loading comparison…</p>
+                ) : (
+                  <>
+                    <div className="mb-4 grid gap-3 sm:grid-cols-2">
+                      <button
+                        type="button"
+                        onClick={() => openComparePeriod('primary')}
+                        className="rounded-xl border border-brand-100 bg-brand-50/40 p-3 text-left transition hover:border-brand-300 hover:shadow-sm"
+                      >
+                        <p className="text-[10px] font-semibold uppercase tracking-wide text-brand-700">
+                          Period A
+                        </p>
+                        <p className="mt-0.5 truncate text-xs text-slate-500">
+                          {compareRanges.primary.label}
+                        </p>
+                        <p className="mt-2 text-xl font-bold text-brand-900">
+                          {comparePrimaryTotals.jobs}{' '}
+                          <span className="text-sm font-semibold">jobs</span>
+                        </p>
+                        <p className="text-sm font-semibold text-slate-800">
+                          {formatMoney(comparePrimaryTotals.amount)}
+                        </p>
+                        {jobsDelta != null && (
+                          <p
+                            className={`mt-1 text-xs font-semibold ${
+                              jobsDelta >= 0 ? 'text-emerald-700' : 'text-red-700'
+                            }`}
+                          >
+                            Jobs {jobsDelta >= 0 ? '+' : ''}
+                            {jobsDelta}% vs B
+                            {amountDelta != null
+                              ? ` · Value ${amountDelta >= 0 ? '+' : ''}${amountDelta}%`
+                              : ''}
+                          </p>
+                        )}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => openComparePeriod('compare')}
+                        className="rounded-xl border border-teal-100 bg-teal-50/40 p-3 text-left transition hover:border-teal-300 hover:shadow-sm"
+                      >
+                        <p className="text-[10px] font-semibold uppercase tracking-wide text-teal-800">
+                          Period B
+                        </p>
+                        <p className="mt-0.5 truncate text-xs text-slate-500">
+                          {compareRanges.compare.label}
+                        </p>
+                        <p className="mt-2 text-xl font-bold text-teal-900">
+                          {compareSecondaryTotals.jobs}{' '}
+                          <span className="text-sm font-semibold">jobs</span>
+                        </p>
+                        <p className="text-sm font-semibold text-slate-800">
+                          {formatMoney(compareSecondaryTotals.amount)}
+                        </p>
+                        <p className="mt-1 text-[11px] text-slate-500">
+                          Click for list · modal shows query + month-to-date totals
+                        </p>
+                      </button>
+                    </div>
+
+                    <div className="grid gap-4 lg:grid-cols-2">
+                      <ChartPanel
+                        title="Jobs trend · A vs B"
+                        hint="Aligned by day offset — click a bar for that day"
+                        interactive
+                      >
+                        <SimpleCompareBars
+                          legendA="Period A"
+                          legendB="Period B"
+                          items={compareJobsTrend}
+                          onItemClick={drillComparePoint}
+                        />
+                      </ChartPanel>
+                      <ChartPanel
+                        title="Value trend · A vs B"
+                        hint="Amount by aligned day"
+                        interactive
+                      >
+                        <SimpleLineChart
+                          legendA="Period A value"
+                          legendB="Period B value"
+                          points={compareAmountTrend}
+                          onPointClick={(p) => drillComparePoint(p, 'a')}
+                        />
+                      </ChartPanel>
+                    </div>
+                  </>
+                )}
+              </>
+            )}
           </div>
 
           <div className="section-card mb-4 !p-4 sm:!p-5">

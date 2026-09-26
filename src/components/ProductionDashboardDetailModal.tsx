@@ -19,12 +19,25 @@ import {
 import { StatusBadge } from '@/components/StatusBadge';
 import { downloadDashboardDetailModalPdf } from '@/utils/pendingDatasheetModalPdf';
 
+export type ProductionTotalsContext = {
+  /** Label for the query window the modal represents */
+  queryLabel: string;
+  queryJobs: number;
+  queryAmount: number;
+  /** Month-to-date as at the query date */
+  monthLabel: string;
+  monthJobs: number;
+  monthAmount: number;
+  asOfDate: string;
+};
+
 export type DashboardDetailModalState =
   | {
       kind: 'production';
       title: string;
       subtitle?: string;
       rows: ProductionDrillEntry[];
+      totalsContext?: ProductionTotalsContext;
     }
   | {
       kind: 'datasheet';
@@ -66,6 +79,7 @@ export function ProductionDashboardDetailModal({
         title: detail.title,
         subtitle: detail.subtitle,
         rows: detail.rows,
+        totalsContext: detail.totalsContext,
       });
     } else {
       downloadDashboardDetailModalPdf({
@@ -107,6 +121,38 @@ export function ProductionDashboardDetailModal({
                 </span>
               ) : null}
             </p>
+            {detail.kind === 'production' && detail.totalsContext ? (
+              <div className="mt-2 grid gap-1.5 text-xs sm:grid-cols-2">
+                <div className="rounded-lg border border-brand-100 bg-brand-50/50 px-2.5 py-1.5">
+                  <p className="font-semibold uppercase tracking-wide text-brand-700">
+                    Query total
+                  </p>
+                  <p className="mt-0.5 text-slate-800">
+                    {detail.totalsContext.queryJobs} jobs ·{' '}
+                    <span className="font-bold">
+                      {formatMoney(detail.totalsContext.queryAmount)}
+                    </span>
+                  </p>
+                  <p className="truncate text-[10px] text-slate-500">
+                    {detail.totalsContext.queryLabel}
+                  </p>
+                </div>
+                <div className="rounded-lg border border-teal-100 bg-teal-50/50 px-2.5 py-1.5">
+                  <p className="font-semibold uppercase tracking-wide text-teal-800">
+                    Month production as at {formatDisplayDate(detail.totalsContext.asOfDate)}
+                  </p>
+                  <p className="mt-0.5 text-slate-800">
+                    {detail.totalsContext.monthJobs} jobs ·{' '}
+                    <span className="font-bold">
+                      {formatMoney(detail.totalsContext.monthAmount)}
+                    </span>
+                  </p>
+                  <p className="truncate text-[10px] text-slate-500">
+                    {detail.totalsContext.monthLabel}
+                  </p>
+                </div>
+              </div>
+            ) : null}
           </div>
           <button
             type="button"

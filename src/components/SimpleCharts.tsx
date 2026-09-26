@@ -144,6 +144,95 @@ export function SimpleHorizontalBars({
   return body;
 }
 
+/** Side-by-side A/B bars for period comparison (jobs or amount). */
+export function SimpleCompareBars({
+  items,
+  legendA = 'Period A',
+  legendB = 'Period B',
+  formatValue,
+  onItemClick,
+  height = 180,
+}: {
+  items: {
+    label: string;
+    a: number;
+    b: number;
+    meta?: Record<string, string>;
+  }[];
+  legendA?: string;
+  legendB?: string;
+  formatValue?: (value: number) => string;
+  onItemClick?: (
+    item: { label: string; a: number; b: number; meta?: Record<string, string> },
+    which: 'a' | 'b',
+  ) => void;
+  height?: number;
+}) {
+  if (!items.length) {
+    return <p className="py-8 text-center text-sm text-slate-500">No comparison data.</p>;
+  }
+  const fmt = formatValue || ((v: number) => String(v));
+  const max = Math.max(...items.flatMap((i) => [i.a, i.b]), 1);
+  const trackH = Math.max(height - 56, 96);
+  const clickable = Boolean(onItemClick);
+
+  return (
+    <div>
+      <div className="flex items-end gap-3" style={{ minHeight: height }}>
+        {items.map((item, idx) => {
+          const aH = item.a <= 0 ? 0 : Math.max(6, Math.round((item.a / max) * trackH));
+          const bH = item.b <= 0 ? 0 : Math.max(6, Math.round((item.b / max) * trackH));
+          return (
+            <div key={`${item.label}-${idx}`} className="flex min-w-0 flex-1 flex-col items-center gap-1">
+              <div className="flex w-full items-end justify-center gap-1" style={{ height: trackH }}>
+                <button
+                  type="button"
+                  disabled={!clickable}
+                  onClick={clickable ? () => onItemClick!(item, 'a') : undefined}
+                  className={`flex w-[42%] flex-col items-center ${
+                    clickable ? 'cursor-pointer rounded-t hover:opacity-90' : ''
+                  }`}
+                  title={`${legendA}: ${fmt(item.a)}`}
+                >
+                  <span className="mb-0.5 text-[10px] font-semibold tabular-nums text-brand-800">
+                    {fmt(item.a)}
+                  </span>
+                  <div className="w-full rounded-t bg-brand-600" style={{ height: aH }} />
+                </button>
+                <button
+                  type="button"
+                  disabled={!clickable}
+                  onClick={clickable ? () => onItemClick!(item, 'b') : undefined}
+                  className={`flex w-[42%] flex-col items-center ${
+                    clickable ? 'cursor-pointer rounded-t hover:opacity-90' : ''
+                  }`}
+                  title={`${legendB}: ${fmt(item.b)}`}
+                >
+                  <span className="mb-0.5 text-[10px] font-semibold tabular-nums text-teal-800">
+                    {fmt(item.b)}
+                  </span>
+                  <div className="w-full rounded-t bg-accent-600" style={{ height: bH }} />
+                </button>
+              </div>
+              <span className="w-full text-center text-[10px] font-medium uppercase leading-tight tracking-wide text-slate-500">
+                {item.label}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+      <div className="mt-2 flex gap-4 text-xs text-slate-600">
+        <span className="inline-flex items-center gap-1.5">
+          <span className="h-2 w-2 rounded-full bg-brand-700" /> {legendA}
+        </span>
+        <span className="inline-flex items-center gap-1.5">
+          <span className="h-2 w-2 rounded-full bg-accent-600" /> {legendB}
+        </span>
+      </div>
+    </div>
+  );
+}
+
 export function SimpleLineChart({
   points,
   height = 160,
@@ -193,7 +282,18 @@ export function SimpleLineChart({
             {onPointClick ? (
               <circle cx={toX(i)} cy={toY(p.a)} r="3.5" fill="#3F3D99" pointerEvents="none" />
             ) : null}
-            <circle cx={toX(i)} cy={toY(p.b)} r="3.5" fill="#26A69A" />
+            <circle
+              cx={toX(i)}
+              cy={toY(p.b)}
+              r={onPointClick ? 8 : 3.5}
+              fill="#26A69A"
+              fillOpacity={onPointClick ? 0.001 : 1}
+              className={onPointClick ? 'cursor-pointer' : undefined}
+              onClick={onPointClick ? () => onPointClick(p, i) : undefined}
+            />
+            {onPointClick ? (
+              <circle cx={toX(i)} cy={toY(p.b)} r="3.5" fill="#26A69A" pointerEvents="none" />
+            ) : null}
           </g>
         ))}
       </svg>
