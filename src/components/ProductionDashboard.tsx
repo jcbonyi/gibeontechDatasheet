@@ -292,8 +292,14 @@ export function ProductionDashboard() {
   const [monthEntries, setMonthEntries] = useState<ProductionDrillEntry[]>([]);
   const [openDatasheets, setOpenDatasheets] = useState<DatasheetDrillEntry[]>([]);
   const [comparePreset, setComparePreset] = useState<ComparePreset>('off');
-  const [comparePrimaryDate, setComparePrimaryDate] = useState(() => isoToday());
-  const [compareSecondaryDate, setCompareSecondaryDate] = useState(() => {
+  const [comparePrimaryFrom, setComparePrimaryFrom] = useState(() => isoToday());
+  const [comparePrimaryTo, setComparePrimaryTo] = useState(() => isoToday());
+  const [compareSecondaryFrom, setCompareSecondaryFrom] = useState(() => {
+    const d = new Date();
+    d.setMonth(d.getMonth() - 1);
+    return isoTodayFromDate(d);
+  });
+  const [compareSecondaryTo, setCompareSecondaryTo] = useState(() => {
     const d = new Date();
     d.setMonth(d.getMonth() - 1);
     return isoTodayFromDate(d);
@@ -314,15 +320,19 @@ export function ProductionDashboard() {
   const compareRanges = useMemo(
     () =>
       resolveCompareRanges(comparePreset, {
-        primaryDate: comparePrimaryDate,
-        compareDate: compareSecondaryDate,
+        primaryFromDate: comparePrimaryFrom,
+        primaryToDate: comparePrimaryTo,
+        compareFromDate: compareSecondaryFrom,
+        compareToDate: compareSecondaryTo,
         primaryWeekStart: comparePrimaryWeek,
         compareWeekStart: compareSecondaryWeek,
       }),
     [
       comparePreset,
-      comparePrimaryDate,
-      compareSecondaryDate,
+      comparePrimaryFrom,
+      comparePrimaryTo,
+      compareSecondaryFrom,
+      compareSecondaryTo,
       comparePrimaryWeek,
       compareSecondaryWeek,
     ],
@@ -1010,25 +1020,57 @@ export function ProductionDashboard() {
             </div>
 
             {comparePreset === 'customDays' && (
-              <div className="mb-3 flex flex-wrap items-end gap-3">
-                <label className="text-xs font-medium text-slate-600">
-                  Day A
-                  <input
-                    type="date"
-                    value={comparePrimaryDate}
-                    onChange={(e) => setComparePrimaryDate(e.target.value)}
-                    className="form-input mt-1 !py-1.5 text-sm"
-                  />
-                </label>
-                <label className="text-xs font-medium text-slate-600">
-                  Day B
-                  <input
-                    type="date"
-                    value={compareSecondaryDate}
-                    onChange={(e) => setCompareSecondaryDate(e.target.value)}
-                    className="form-input mt-1 !py-1.5 text-sm"
-                  />
-                </label>
+              <div className="mb-3 grid gap-3 sm:grid-cols-2">
+                <div className="rounded-xl border border-brand-100 bg-brand-50/30 p-3">
+                  <p className="mb-2 text-[10px] font-semibold uppercase tracking-wide text-brand-700">
+                    Period A
+                  </p>
+                  <div className="flex flex-wrap items-end gap-3">
+                    <label className="text-xs font-medium text-slate-600">
+                      Start date
+                      <input
+                        type="date"
+                        value={comparePrimaryFrom}
+                        onChange={(e) => setComparePrimaryFrom(e.target.value)}
+                        className="form-input mt-1 !py-1.5 text-sm"
+                      />
+                    </label>
+                    <label className="text-xs font-medium text-slate-600">
+                      End date
+                      <input
+                        type="date"
+                        value={comparePrimaryTo}
+                        onChange={(e) => setComparePrimaryTo(e.target.value)}
+                        className="form-input mt-1 !py-1.5 text-sm"
+                      />
+                    </label>
+                  </div>
+                </div>
+                <div className="rounded-xl border border-teal-100 bg-teal-50/30 p-3">
+                  <p className="mb-2 text-[10px] font-semibold uppercase tracking-wide text-teal-800">
+                    Period B
+                  </p>
+                  <div className="flex flex-wrap items-end gap-3">
+                    <label className="text-xs font-medium text-slate-600">
+                      Start date
+                      <input
+                        type="date"
+                        value={compareSecondaryFrom}
+                        onChange={(e) => setCompareSecondaryFrom(e.target.value)}
+                        className="form-input mt-1 !py-1.5 text-sm"
+                      />
+                    </label>
+                    <label className="text-xs font-medium text-slate-600">
+                      End date
+                      <input
+                        type="date"
+                        value={compareSecondaryTo}
+                        onChange={(e) => setCompareSecondaryTo(e.target.value)}
+                        className="form-input mt-1 !py-1.5 text-sm"
+                      />
+                    </label>
+                  </div>
+                </div>
               </div>
             )}
 

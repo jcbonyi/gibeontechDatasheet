@@ -378,7 +378,7 @@ export const COMPARE_PRESETS: { key: ComparePreset; label: string; hint: string 
     label: 'This week vs same week last month',
     hint: 'Aligned weekdays Mon–today',
   },
-  { key: 'customDays', label: 'Custom days', hint: 'Pick two dates' },
+  { key: 'customDays', label: 'Custom days', hint: 'A start/end and B start/end' },
   { key: 'customWeeks', label: 'Custom weeks', hint: 'Pick two week starts' },
 ];
 
@@ -438,6 +438,12 @@ export function resolveCompareRanges(
     asOf?: Date;
     primaryDate?: string;
     compareDate?: string;
+    /** Custom days — Period A inclusive range */
+    primaryFromDate?: string;
+    primaryToDate?: string;
+    /** Custom days — Period B inclusive range */
+    compareFromDate?: string;
+    compareToDate?: string;
     primaryWeekStart?: string;
     compareWeekStart?: string;
   } = {},
@@ -482,11 +488,42 @@ export function resolveCompareRanges(
   }
 
   if (preset === 'customDays') {
-    const a = (opts.primaryDate || today).slice(0, 10);
-    const b = (opts.compareDate || isoDate(sameCalendarDayLastMonth(asOf))).slice(0, 10);
+    const normalizeRange = (fromRaw: string, toRaw: string) => {
+      let from = fromRaw.slice(0, 10);
+      let to = toRaw.slice(0, 10);
+      if (from > to) {
+        const tmp = from;
+        from = to;
+        to = tmp;
+      }
+      return { from, to };
+    };
+    const prior = isoDate(sameCalendarDayLastMonth(asOf));
+    const a = normalizeRange(
+      opts.primaryFromDate || opts.primaryDate || today,
+      opts.primaryToDate || opts.primaryDate || today,
+    );
+    const b = normalizeRange(
+      opts.compareFromDate || opts.compareDate || prior,
+      opts.compareToDate || opts.compareDate || prior,
+    );
     return {
-      primary: { fromDate: a, toDate: a, label: `Day A (${formatDisplayDate(a)})` },
-      compare: { fromDate: b, toDate: b, label: `Day B (${formatDisplayDate(b)})` },
+      primary: {
+        fromDate: a.from,
+        toDate: a.to,
+        label:
+          a.from === a.to
+            ? `Period A (${formatDisplayDate(a.from)})`
+            : `Period A (${formatDisplayDate(a.from)} → ${formatDisplayDate(a.to)})`,
+      },
+      compare: {
+        fromDate: b.from,
+        toDate: b.to,
+        label:
+          b.from === b.to
+            ? `Period B (${formatDisplayDate(b.from)})`
+            : `Period B (${formatDisplayDate(b.from)} → ${formatDisplayDate(b.to)})`,
+      },
     };
   }
 
