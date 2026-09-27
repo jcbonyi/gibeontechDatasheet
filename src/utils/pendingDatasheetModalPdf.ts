@@ -527,11 +527,6 @@ export function buildComparisonModalPdf(input: ComparisonPdfInput): jsPDF {
   const legendA = input.person ? `${input.person} · A` : 'Period A';
   const legendB = input.person ? `${input.person} · B` : 'Period B';
 
-  y = drawDualSeriesTrend(pdf, y, 'Jobs trend · A vs B', input.jobsTrend, legendA, legendB);
-  if (y > pageH - 70) {
-    pdf.addPage();
-    y = 16;
-  }
   y = drawDualSeriesTrend(
     pdf,
     y,
@@ -556,17 +551,10 @@ export function buildComparisonModalPdf(input: ComparisonPdfInput): jsPDF {
   autoTable(pdf, {
     startY: y,
     margin: { left: margin, right: margin, top: margin, bottom: 14 },
-    head: [['Point', 'A jobs', 'B jobs', 'A value', 'B value']],
-    body: (input.jobsTrend.length ? input.jobsTrend : [{ label: '—', a: 0, b: 0 }]).map((p, i) => {
-      const amt = input.amountTrend[i] || { a: 0, b: 0 };
-      return [
-        p.label,
-        String(p.a),
-        String(p.b),
-        formatMoney(amt.a),
-        formatMoney(amt.b),
-      ];
-    }),
+    head: [['Point', 'A value', 'B value']],
+    body: (input.amountTrend.length ? input.amountTrend : [{ label: '—', a: 0, b: 0 }]).map(
+      (p) => [p.label, formatMoney(p.a), formatMoney(p.b)],
+    ),
     styles: { fontSize: 7.5, cellPadding: 2, valign: 'middle' },
     headStyles: { fillColor: [BRAND.r, BRAND.g, BRAND.b], textColor: 255, fontStyle: 'bold' },
     alternateRowStyles: { fillColor: [248, 250, 252] },

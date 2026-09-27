@@ -17,7 +17,7 @@ import {
   type ProductionDrillEntry,
 } from '@/lib/productionDashboardDrillDown';
 import { StatusBadge } from '@/components/StatusBadge';
-import { SimpleCompareBars, SimpleLineChart } from '@/components/SimpleCharts';
+import { SimpleLineChart } from '@/components/SimpleCharts';
 import {
   downloadDashboardDetailModalPdf,
   downloadComparisonModalPdf,
@@ -342,25 +342,14 @@ export function ProductionDashboardDetailModal({
                 </div>
               </div>
 
-              <div className="grid gap-4 lg:grid-cols-2">
-                <div className="rounded-xl border border-slate-100 bg-slate-50/50 p-3">
-                  <h3 className="mb-2 text-sm font-semibold text-brand-800">Jobs trend · A vs B</h3>
-                  <SimpleCompareBars
-                    legendA={legendA}
-                    legendB={legendB}
-                    items={detail.jobsTrend}
-                    height={160}
-                  />
-                </div>
-                <div className="rounded-xl border border-slate-100 bg-slate-50/50 p-3">
-                  <h3 className="mb-2 text-sm font-semibold text-brand-800">Value trend · A vs B</h3>
-                  <SimpleLineChart
-                    legendA={`${legendA} value`}
-                    legendB={`${legendB} value`}
-                    points={detail.amountTrend}
-                    height={140}
-                  />
-                </div>
+              <div className="rounded-xl border border-slate-100 bg-slate-50/50 p-3">
+                <h3 className="mb-2 text-sm font-semibold text-brand-800">Value trend · A vs B</h3>
+                <SimpleLineChart
+                  legendA={`${legendA} value`}
+                  legendB={`${legendB} value`}
+                  points={detail.amountTrend}
+                  height={160}
+                />
               </div>
 
               <div className="grid gap-4 lg:grid-cols-2">

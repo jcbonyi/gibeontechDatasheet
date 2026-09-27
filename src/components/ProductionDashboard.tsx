@@ -1039,8 +1039,8 @@ export function ProductionDashboard() {
           <div className="section-card mb-4 !p-4 sm:!p-5">
             <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
               <div>
-                <h2 className="flex items-center gap-2 text-sm font-semibold text-brand-800">
-                  <GitCompareArrows className="h-4 w-4 text-brand-600" />
+                <h2 className="flex items-center gap-2 text-base font-extrabold uppercase tracking-wide text-brand-900 sm:text-lg">
+                  <GitCompareArrows className="h-5 w-5 text-brand-700" />
                   Period comparison
                 </h2>
                 <p className="mt-0.5 text-xs text-slate-500">
@@ -1275,7 +1275,7 @@ export function ProductionDashboard() {
                           A vs B summary
                         </p>
                         <p className="mt-0.5 truncate text-xs text-slate-500">
-                          Comparison card · trends in modal &amp; PDF
+                          Comparison card · Value trend in modal &amp; PDF
                           {compareScopeLabel ? ` · ${compareScopeLabel}` : ''}
                         </p>
                         <p className="mt-2 text-lg font-bold text-violet-950">
@@ -1290,7 +1290,7 @@ export function ProductionDashboard() {
                           {formatMoney(compareSecondaryTotals.amount)}
                         </p>
                         <p className="mt-1 text-[11px] font-medium text-violet-700">
-                          Open comparison modal → PDF includes trend graphs
+                          Open comparison modal → PDF includes Value trend · A vs B
                         </p>
                       </button>
                     </div>
