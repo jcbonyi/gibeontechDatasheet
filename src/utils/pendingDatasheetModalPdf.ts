@@ -341,3 +341,289 @@ export function buildDatasheetModalPdf(
 
 /** @deprecated Use buildDatasheetModalPdf */
 export const buildPendingDatasheetModalPdf = buildDatasheetModalPdf;
+
+type ComparisonPdfInput = {
+  title: string;
+  subtitle?: string;
+  person?: string;
+  primaryLabel: string;
+  compareLabel: string;
+  primaryJobs: number;
+  primaryAmount: number;
+  compareJobs: number;
+  compareAmount: number;
+  jobsDelta: number | null;
+  amountDelta: number | null;
+  primaryTotalsContext: {
+    queryLabel: string;
+    queryJobs: number;
+    queryAmount: number;
+    monthLabel: string;
+    monthJobs: number;
+    monthAmount: number;
+    asOfDate: string;
+  };
+  compareTotalsContext: {
+    queryLabel: string;
+    queryJobs: number;
+    queryAmount: number;
+    monthLabel: string;
+    monthJobs: number;
+    monthAmount: number;
+    asOfDate: string;
+  };
+  jobsTrend: { label: string; a: number; b: number }[];
+  amountTrend: { label: string; a: number; b: number }[];
+  primaryRows: ProductionDrillEntry[];
+  compareRows: ProductionDrillEntry[];
+};
+
+function drawDualSeriesTrend(
+  pdf: jsPDF,
+  y: number,
+  title: string,
+  points: { label: string; a: number; b: number }[],
+  legendA: string,
+  legendB: string,
+  formatValue?: (n: number) => string,
+): number {
+  const margin = 12;
+  const pageW = pdf.internal.pageSize.getWidth();
+  const chartW = pageW - margin * 2;
+  const chartH = 48;
+  const padL = 10;
+  const padR = 4;
+  const padT = 6;
+  const padB = 10;
+  const innerW = chartW - padL - padR;
+  const innerH = chartH - padT - padB;
+
+  pdf.setFont('helvetica', 'bold');
+  pdf.setFontSize(9);
+  pdf.setTextColor(BRAND.r, BRAND.g, BRAND.b);
+  pdf.text(title, margin, y);
+  y += 3;
+
+  if (!points.length) {
+    pdf.setFont('helvetica', 'normal');
+    pdf.setFontSize(8);
+    pdf.setTextColor(MUTED.r, MUTED.g, MUTED.b);
+    pdf.text('No trend points for this comparison.', margin, y + 6);
+    return y + 14;
+  }
+
+  const max = Math.max(...points.flatMap((p) => [p.a, p.b]), 1);
+  const originX = margin + padL;
+  const originY = y + padT + innerH;
+
+  pdf.setDrawColor(226, 232, 240);
+  pdf.setLineWidth(0.2);
+  pdf.rect(margin, y, chartW, chartH);
+
+  // grid
+  for (let g = 0; g <= 4; g++) {
+    const gy = originY - (innerH * g) / 4;
+    pdf.line(originX, gy, originX + innerW, gy);
+  }
+
+  const toX = (i: number) =>
+    originX + (points.length === 1 ? innerW / 2 : (i / (points.length - 1)) * innerW);
+  const toY = (v: number) => originY - (v / max) * innerH;
+
+  const drawSeries = (key: 'a' | 'b', color: { r: number; g: number; b: number }) => {
+    pdf.setDrawColor(color.r, color.g, color.b);
+    pdf.setFillColor(color.r, color.g, color.b);
+    pdf.setLineWidth(0.7);
+    for (let i = 0; i < points.length; i++) {
+      const x = toX(i);
+      const yy = toY(points[i][key]);
+      if (i === 0) {
+        // start path via line segments
+      } else {
+        pdf.line(toX(i - 1), toY(points[i - 1][key]), x, yy);
+      }
+      pdf.circle(x, yy, 0.8, 'F');
+    }
+  };
+
+  drawSeries('a', BRAND);
+  drawSeries('b', TEAL);
+
+  // x labels (sparse)
+  pdf.setFont('helvetica', 'normal');
+  pdf.setFontSize(6);
+  pdf.setTextColor(MUTED.r, MUTED.g, MUTED.b);
+  const step = Math.max(1, Math.ceil(points.length / 8));
+  for (let i = 0; i < points.length; i += step) {
+    pdf.text(points[i].label.slice(0, 10), toX(i), originY + 4, { align: 'center' });
+  }
+
+  // max label
+  const fmt = formatValue || ((n: number) => String(Math.round(n)));
+  pdf.text(fmt(max), margin + 1, y + padT + 2);
+
+  y += chartH + 4;
+  pdf.setFontSize(7);
+  pdf.setTextColor(BRAND.r, BRAND.g, BRAND.b);
+  pdf.text(`● ${legendA}`, margin, y);
+  pdf.setTextColor(TEAL.r, TEAL.g, TEAL.b);
+  pdf.text(`● ${legendB}`, margin + 55, y);
+  return y + 6;
+}
+
+export function downloadComparisonModalPdf(input: ComparisonPdfInput): void {
+  const pdf = buildComparisonModalPdf(input);
+  pdf.save(`${safeFilename(input.title)}.pdf`);
+}
+
+export function buildComparisonModalPdf(input: ComparisonPdfInput): jsPDF {
+  const pdf = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+  const margin = 12;
+  const pageH = pdf.internal.pageSize.getHeight();
+  let y = drawPdfHeader(pdf, 'Production — Period Comparison');
+  const personBit = input.person ? ` · ${input.person}` : ' · overall';
+  y = drawPdfTitleBlock(
+    pdf,
+    y,
+    input.title,
+    input.subtitle,
+    `A ${input.primaryJobs} jobs / ${formatMoney(input.primaryAmount)}  vs  B ${input.compareJobs} jobs / ${formatMoney(input.compareAmount)}${personBit}`,
+  );
+
+  pdf.setFont('helvetica', 'normal');
+  pdf.setFontSize(8);
+  pdf.setTextColor(INK.r, INK.g, INK.b);
+  pdf.text(`Period A: ${input.primaryLabel}`, margin, y);
+  y += 4;
+  pdf.text(
+    `  Query ${input.primaryTotalsContext.queryJobs} · ${formatMoney(input.primaryTotalsContext.queryAmount)}  |  MTD as at ${formatDisplayDate(input.primaryTotalsContext.asOfDate)}: ${input.primaryTotalsContext.monthJobs} · ${formatMoney(input.primaryTotalsContext.monthAmount)}`,
+    margin,
+    y,
+  );
+  y += 5;
+  pdf.text(`Period B: ${input.compareLabel}`, margin, y);
+  y += 4;
+  pdf.text(
+    `  Query ${input.compareTotalsContext.queryJobs} · ${formatMoney(input.compareTotalsContext.queryAmount)}  |  MTD as at ${formatDisplayDate(input.compareTotalsContext.asOfDate)}: ${input.compareTotalsContext.monthJobs} · ${formatMoney(input.compareTotalsContext.monthAmount)}`,
+    margin,
+    y,
+  );
+  y += 5;
+  if (input.jobsDelta != null || input.amountDelta != null) {
+    const parts: string[] = [];
+    if (input.jobsDelta != null) {
+      parts.push(`Jobs ${input.jobsDelta >= 0 ? '+' : ''}${input.jobsDelta}%`);
+    }
+    if (input.amountDelta != null) {
+      parts.push(`Value ${input.amountDelta >= 0 ? '+' : ''}${input.amountDelta}%`);
+    }
+    pdf.setFont('helvetica', 'bold');
+    pdf.text(`Change (A vs B): ${parts.join(' · ')}`, margin, y);
+    y += 6;
+  } else {
+    y += 2;
+  }
+
+  const legendA = input.person ? `${input.person} · A` : 'Period A';
+  const legendB = input.person ? `${input.person} · B` : 'Period B';
+
+  y = drawDualSeriesTrend(pdf, y, 'Jobs trend · A vs B', input.jobsTrend, legendA, legendB);
+  if (y > pageH - 70) {
+    pdf.addPage();
+    y = 16;
+  }
+  y = drawDualSeriesTrend(
+    pdf,
+    y,
+    'Value trend · A vs B',
+    input.amountTrend,
+    `${legendA} value`,
+    `${legendB} value`,
+    (n) => formatMoney(n),
+  );
+
+  // Daily points table
+  if (y > pageH - 50) {
+    pdf.addPage();
+    y = 16;
+  }
+  pdf.setFont('helvetica', 'bold');
+  pdf.setFontSize(9);
+  pdf.setTextColor(BRAND.r, BRAND.g, BRAND.b);
+  pdf.text('Aligned daily points', margin, y);
+  y += 2;
+
+  autoTable(pdf, {
+    startY: y,
+    margin: { left: margin, right: margin, top: margin, bottom: 14 },
+    head: [['Point', 'A jobs', 'B jobs', 'A value', 'B value']],
+    body: (input.jobsTrend.length ? input.jobsTrend : [{ label: '—', a: 0, b: 0 }]).map((p, i) => {
+      const amt = input.amountTrend[i] || { a: 0, b: 0 };
+      return [
+        p.label,
+        String(p.a),
+        String(p.b),
+        formatMoney(amt.a),
+        formatMoney(amt.b),
+      ];
+    }),
+    styles: { fontSize: 7.5, cellPadding: 2, valign: 'middle' },
+    headStyles: { fillColor: [BRAND.r, BRAND.g, BRAND.b], textColor: 255, fontStyle: 'bold' },
+    alternateRowStyles: { fillColor: [248, 250, 252] },
+  });
+
+  y = finalY(pdf, y);
+  if (y > pageH - 40) {
+    pdf.addPage();
+    y = 16;
+  }
+
+  // Compact period record summaries
+  const writeSide = (label: string, rows: ProductionDrillEntry[], startY: number) => {
+    let yy = startY;
+    pdf.setFont('helvetica', 'bold');
+    pdf.setFontSize(9);
+    pdf.setTextColor(BRAND.r, BRAND.g, BRAND.b);
+    pdf.text(label, margin, yy);
+    yy += 2;
+    const { grandTotal } = sumProductionByAssignment(rows);
+    autoTable(pdf, {
+      startY: yy,
+      margin: { left: margin, right: margin, top: margin, bottom: 14 },
+      head: [['Date', 'Reg.', 'Assignment', 'Done by', 'Amount']],
+      body: rows.length
+        ? rows.slice(0, 40).map((r) => [
+            formatDisplayDate(r.production_date.slice(0, 10)),
+            r.registration_number,
+            r.assignment || '—',
+            r.done_by_name || '—',
+            formatMoney(r.amount),
+          ])
+        : [['—', '—', '—', '—', 'No records']],
+      styles: { fontSize: 7, cellPadding: 1.8, valign: 'middle' },
+      headStyles: { fillColor: [BRAND.r, BRAND.g, BRAND.b], textColor: 255, fontStyle: 'bold' },
+      alternateRowStyles: { fillColor: [248, 250, 252] },
+    });
+    yy = finalY(pdf, yy);
+    pdf.setFont('helvetica', 'bold');
+    pdf.setFontSize(8);
+    pdf.text(
+      `Total · ${rows.length} jobs · ${formatMoney(grandTotal)}${
+        rows.length > 40 ? ' (first 40 rows shown)' : ''
+      }`,
+      margin,
+      yy,
+    );
+    return yy + 8;
+  };
+
+  y = writeSide(`Period A records · ${input.primaryLabel}`, input.primaryRows, y);
+  if (y > pageH - 40) {
+    pdf.addPage();
+    y = 16;
+  }
+  writeSide(`Period B records · ${input.compareLabel}`, input.compareRows, y);
+
+  drawPdfFooter(pdf);
+  return pdf;
+}

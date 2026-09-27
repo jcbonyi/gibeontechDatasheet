@@ -312,8 +312,10 @@ export function ProductionDashboard() {
   });
   const [compareEntries, setCompareEntries] = useState<ProductionDrillEntry[]>([]);
   const [compareLoading, setCompareLoading] = useState(false);
-  /** Empty = overall production; otherwise Done By name for individual performance. */
+  /** Empty = no filter on that dimension. Filters combine with AND. */
   const [comparePerson, setComparePerson] = useState('');
+  const [compareInsurer, setCompareInsurer] = useState('');
+  const [compareInstructedBy, setCompareInstructedBy] = useState('');
 
   const chartRange = useMemo(() => resolveChartPeriodRange(chartPeriod), [chartPeriod]);
 
@@ -502,47 +504,84 @@ export function ProductionDashboard() {
     [datasheetPending],
   );
 
-  const compareStaffOptions = useMemo(() => {
-    const map = new Map<string, string>();
-    for (const row of [...compareEntries, ...monthEntries, ...periodEntries]) {
-      const raw = normalizeDisplayName(row.done_by_name, 'Unassigned');
-      if (!raw || raw === 'Unassigned') continue;
-      const key = normalizeNameKey(raw);
-      const cur = map.get(key);
-      map.set(key, cur ? preferDisplayName(cur, raw) : raw);
-    }
-    return [...map.values()].sort((a, b) => a.localeCompare(b));
-  }, [compareEntries, monthEntries, periodEntries]);
-
-  const filterCompareByPerson = useCallback(
-    (rows: ProductionDrillEntry[]) => {
-      if (!comparePerson) return rows;
-      return rows.filter((r) => namesMatch(r.done_by_name || 'Unassigned', comparePerson));
+  const buildNameOptions = useCallback(
+    (pick: (row: ProductionDrillEntry) => string | null | undefined, skip: string[]) => {
+      const map = new Map<string, string>();
+      const skipSet = new Set(skip.map((s) => normalizeNameKey(s)));
+      for (const row of [...compareEntries, ...monthEntries, ...periodEntries]) {
+        const raw = normalizeDisplayName(pick(row), '');
+        if (!raw) continue;
+        const key = normalizeNameKey(raw);
+        if (skipSet.has(key)) continue;
+        const cur = map.get(key);
+        map.set(key, cur ? preferDisplayName(cur, raw) : raw);
+      }
+      return [...map.values()].sort((a, b) => a.localeCompare(b));
     },
-    [comparePerson],
+    [compareEntries, monthEntries, periodEntries],
+  );
+
+  const compareStaffOptions = useMemo(
+    () => buildNameOptions((r) => r.done_by_name, ['Unassigned']),
+    [buildNameOptions],
+  );
+  const compareInsurerOptions = useMemo(
+    () => buildNameOptions((r) => r.insurer_name, ['Unknown']),
+    [buildNameOptions],
+  );
+  const compareInstructedByOptions = useMemo(
+    () => buildNameOptions((r) => r.instructed_by_name, ['Unassigned']),
+    [buildNameOptions],
+  );
+
+  const compareScopeLabel = useMemo(() => {
+    const parts: string[] = [];
+    if (comparePerson) parts.push(comparePerson);
+    if (compareInsurer) parts.push(compareInsurer);
+    if (compareInstructedBy) parts.push(`Instr. ${compareInstructedBy}`);
+    return parts.join(' · ');
+  }, [comparePerson, compareInsurer, compareInstructedBy]);
+
+  const filterCompareRows = useCallback(
+    (rows: ProductionDrillEntry[]) => {
+      let out = rows;
+      if (comparePerson) {
+        out = out.filter((r) => namesMatch(r.done_by_name || 'Unassigned', comparePerson));
+      }
+      if (compareInsurer) {
+        out = out.filter((r) => namesMatch(r.insurer_name || 'Unknown', compareInsurer));
+      }
+      if (compareInstructedBy) {
+        out = out.filter((r) =>
+          namesMatch(r.instructed_by_name || 'Unassigned', compareInstructedBy),
+        );
+      }
+      return out;
+    },
+    [comparePerson, compareInsurer, compareInstructedBy],
   );
 
   const comparePrimaryRows = useMemo(() => {
     if (!compareRanges) return [];
-    return filterCompareByPerson(
+    return filterCompareRows(
       entriesInDateRange(
         compareEntries,
         compareRanges.primary.fromDate,
         compareRanges.primary.toDate,
       ),
     );
-  }, [compareEntries, compareRanges, filterCompareByPerson]);
+  }, [compareEntries, compareRanges, filterCompareRows]);
 
   const compareSecondaryRows = useMemo(() => {
     if (!compareRanges) return [];
-    return filterCompareByPerson(
+    return filterCompareRows(
       entriesInDateRange(
         compareEntries,
         compareRanges.compare.fromDate,
         compareRanges.compare.toDate,
       ),
     );
-  }, [compareEntries, compareRanges, filterCompareByPerson]);
+  }, [compareEntries, compareRanges, filterCompareRows]);
 
   const comparePrimaryTotals = useMemo(
     () => sumProductionAmount(comparePrimaryRows),
@@ -589,23 +628,22 @@ export function ProductionDashboard() {
       const query = sumProductionAmount(queryRows);
       const mtdRange = monthToDateRange(asOfDate);
       const pool = [...compareEntries, ...monthEntries, ...periodEntries];
-      let mtdRows = entriesInDateRange(pool, mtdRange.fromDate, mtdRange.toDate);
-      if (comparePerson) {
-        mtdRows = mtdRows.filter((r) => namesMatch(r.done_by_name || 'Unassigned', comparePerson));
-      }
+      const mtdRows = filterCompareRows(
+        entriesInDateRange(pool, mtdRange.fromDate, mtdRange.toDate),
+      );
       const month = sumProductionAmount(mtdRows);
-      const personSuffix = comparePerson ? ` · ${comparePerson}` : '';
+      const scopeSuffix = compareScopeLabel ? ` · ${compareScopeLabel}` : '';
       return {
-        queryLabel: `${queryLabel}${personSuffix}`,
+        queryLabel: `${queryLabel}${scopeSuffix}`,
         queryJobs: query.jobs,
         queryAmount: query.amount,
-        monthLabel: `${mtdRange.label}${personSuffix}`,
+        monthLabel: `${mtdRange.label}${scopeSuffix}`,
         monthJobs: month.jobs,
         monthAmount: month.amount,
         asOfDate: asOfDate.slice(0, 10),
       };
     },
-    [compareEntries, monthEntries, periodEntries, comparePerson],
+    [compareEntries, monthEntries, periodEntries, filterCompareRows, compareScopeLabel],
   );
 
   const showProductionList = (
@@ -652,13 +690,48 @@ export function ProductionDashboard() {
     if (!compareRanges) return;
     const range = which === 'primary' ? compareRanges.primary : compareRanges.compare;
     const rows = which === 'primary' ? comparePrimaryRows : compareSecondaryRows;
-    const personBit = comparePerson ? ` · ${comparePerson}` : '';
+    const scopeBit = compareScopeLabel ? ` · ${compareScopeLabel}` : '';
     showProductionList(
-      `${range.label}${personBit}`,
+      `${range.label}${scopeBit}`,
       rows,
-      comparePerson ? `Individual performance · ${comparePerson}` : 'Period comparison (overall)',
+      compareScopeLabel
+        ? `Filtered comparison · ${compareScopeLabel}`
+        : 'Period comparison (overall)',
       buildTotalsContext(rows, range.toDate, range.label),
     );
+  };
+
+  const openComparisonSummary = () => {
+    if (!compareRanges) return;
+    const scopeBit = compareScopeLabel ? ` · ${compareScopeLabel}` : '';
+    setDetail({
+      kind: 'comparison',
+      title: `Period comparison${scopeBit}`,
+      subtitle: `${compareRanges.primary.label}  vs  ${compareRanges.compare.label}`,
+      person: compareScopeLabel || undefined,
+      primaryLabel: compareRanges.primary.label,
+      compareLabel: compareRanges.compare.label,
+      primaryJobs: comparePrimaryTotals.jobs,
+      primaryAmount: comparePrimaryTotals.amount,
+      compareJobs: compareSecondaryTotals.jobs,
+      compareAmount: compareSecondaryTotals.amount,
+      jobsDelta,
+      amountDelta,
+      primaryRows: comparePrimaryRows,
+      compareRows: compareSecondaryRows,
+      primaryTotalsContext: buildTotalsContext(
+        comparePrimaryRows,
+        compareRanges.primary.toDate,
+        compareRanges.primary.label,
+      ),
+      compareTotalsContext: buildTotalsContext(
+        compareSecondaryRows,
+        compareRanges.compare.toDate,
+        compareRanges.compare.label,
+      ),
+      jobsTrend: compareJobsTrend,
+      amountTrend: compareAmountTrend,
+    });
   };
 
   const drillComparePoint = (
@@ -667,13 +740,13 @@ export function ProductionDashboard() {
   ) => {
     const date = which === 'a' ? point.meta?.primaryDate : point.meta?.compareDate;
     if (!date) return;
-    const rows = filterCompareByPerson(filterProductionByDate(compareEntries, date));
+    const rows = filterCompareRows(filterProductionByDate(compareEntries, date));
     const sideLabel = which === 'a' ? compareRanges?.primary.label : compareRanges?.compare.label;
-    const personBit = comparePerson ? ` · ${comparePerson}` : '';
+    const scopeBit = compareScopeLabel ? ` · ${compareScopeLabel}` : '';
     showProductionList(
-      `Production · ${formatDisplayDate(date)}${personBit}`,
+      `Production · ${formatDisplayDate(date)}${scopeBit}`,
       rows,
-      comparePerson ? `${sideLabel || ''} · ${comparePerson}` : sideLabel,
+      compareScopeLabel ? `${sideLabel || ''} · ${compareScopeLabel}` : sideLabel,
       buildTotalsContext(rows, date, `Query · ${formatDisplayDate(date)}`),
     );
   };
@@ -972,31 +1045,66 @@ export function ProductionDashboard() {
                 </h2>
                 <p className="mt-0.5 text-xs text-slate-500">
                   Compare today / this week with the same day or week last month — or pick custom
-                  dates. Choose a person for individual performance, or leave Overall.
+                  dates. Filter by Individual, Insurer, and/or Instructed By (combined with AND),
+                  or leave all Overall.
                 </p>
               </div>
-              <label className="block min-w-[12rem] text-xs font-medium text-slate-600">
-                Individual
-                <select
-                  value={comparePerson}
-                  onChange={(e) => setComparePerson(e.target.value)}
-                  className="form-input mt-1 !py-1.5 text-sm"
-                  aria-label="Compare individual performance"
-                >
-                  <option value="">Overall (all staff)</option>
-                  {compareStaffOptions.map((name) => (
-                    <option key={name} value={name}>
-                      {name}
-                    </option>
-                  ))}
-                </select>
-              </label>
+              <div className="flex flex-wrap items-end gap-2">
+                <label className="block min-w-[10rem] text-xs font-medium text-slate-600">
+                  Individual
+                  <select
+                    value={comparePerson}
+                    onChange={(e) => setComparePerson(e.target.value)}
+                    className="form-input mt-1 !py-1.5 text-sm"
+                    aria-label="Compare individual performance"
+                  >
+                    <option value="">Overall (all staff)</option>
+                    {compareStaffOptions.map((name) => (
+                      <option key={name} value={name}>
+                        {name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="block min-w-[10rem] text-xs font-medium text-slate-600">
+                  Insurer
+                  <select
+                    value={compareInsurer}
+                    onChange={(e) => setCompareInsurer(e.target.value)}
+                    className="form-input mt-1 !py-1.5 text-sm"
+                    aria-label="Compare by insurer"
+                  >
+                    <option value="">Overall (all insurers)</option>
+                    {compareInsurerOptions.map((name) => (
+                      <option key={name} value={name}>
+                        {name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="block min-w-[10rem] text-xs font-medium text-slate-600">
+                  Instructed By
+                  <select
+                    value={compareInstructedBy}
+                    onChange={(e) => setCompareInstructedBy(e.target.value)}
+                    className="form-input mt-1 !py-1.5 text-sm"
+                    aria-label="Compare by instructed by"
+                  >
+                    <option value="">Overall (all)</option>
+                    {compareInstructedByOptions.map((name) => (
+                      <option key={name} value={name}>
+                        {name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
             </div>
 
-            {comparePerson ? (
+            {compareScopeLabel ? (
               <p className="mb-3 rounded-lg border border-brand-100 bg-brand-50/50 px-3 py-1.5 text-xs text-brand-800">
-                Showing <span className="font-semibold">{comparePerson}</span> only — KPIs, trends,
-                and modals use this person&apos;s Done By production.
+                Showing <span className="font-semibold">{compareScopeLabel}</span> — KPIs, trends,
+                and modals use these filters (AND).
               </p>
             ) : null}
 
@@ -1103,14 +1211,14 @@ export function ProductionDashboard() {
                   <p className="py-6 text-center text-sm text-slate-500">Loading comparison…</p>
                 ) : (
                   <>
-                    <div className="mb-4 grid gap-3 sm:grid-cols-2">
+                    <div className="mb-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                       <button
                         type="button"
                         onClick={() => openComparePeriod('primary')}
                         className="rounded-xl border border-brand-100 bg-brand-50/40 p-3 text-left transition hover:border-brand-300 hover:shadow-sm"
                       >
                         <p className="text-[10px] font-semibold uppercase tracking-wide text-brand-700">
-                          Period A{comparePerson ? ` · ${comparePerson}` : ''}
+                          Period A{compareScopeLabel ? ` · ${compareScopeLabel}` : ''}
                         </p>
                         <p className="mt-0.5 truncate text-xs text-slate-500">
                           {compareRanges.primary.label}
@@ -1142,7 +1250,7 @@ export function ProductionDashboard() {
                         className="rounded-xl border border-teal-100 bg-teal-50/40 p-3 text-left transition hover:border-teal-300 hover:shadow-sm"
                       >
                         <p className="text-[10px] font-semibold uppercase tracking-wide text-teal-800">
-                          Period B{comparePerson ? ` · ${comparePerson}` : ''}
+                          Period B{compareScopeLabel ? ` · ${compareScopeLabel}` : ''}
                         </p>
                         <p className="mt-0.5 truncate text-xs text-slate-500">
                           {compareRanges.compare.label}
@@ -1158,37 +1266,72 @@ export function ProductionDashboard() {
                           Click for list · modal shows query + month-to-date totals
                         </p>
                       </button>
+                      <button
+                        type="button"
+                        onClick={openComparisonSummary}
+                        className="rounded-xl border border-violet-200 bg-gradient-to-br from-violet-50/90 to-white p-3 text-left shadow-sm transition hover:border-violet-300 hover:shadow-md sm:col-span-2 lg:col-span-1"
+                      >
+                        <p className="text-[10px] font-semibold uppercase tracking-wide text-violet-800">
+                          A vs B summary
+                        </p>
+                        <p className="mt-0.5 truncate text-xs text-slate-500">
+                          Comparison card · trends in modal &amp; PDF
+                          {compareScopeLabel ? ` · ${compareScopeLabel}` : ''}
+                        </p>
+                        <p className="mt-2 text-lg font-bold text-violet-950">
+                          {comparePrimaryTotals.jobs}
+                          <span className="mx-1 text-sm font-medium text-slate-400">vs</span>
+                          {compareSecondaryTotals.jobs}
+                          <span className="ml-1 text-sm font-semibold text-slate-600">jobs</span>
+                        </p>
+                        <p className="text-sm font-semibold text-slate-800">
+                          {formatMoney(comparePrimaryTotals.amount)}
+                          <span className="mx-1 text-xs font-medium text-slate-400">vs</span>
+                          {formatMoney(compareSecondaryTotals.amount)}
+                        </p>
+                        <p className="mt-1 text-[11px] font-medium text-violet-700">
+                          Open comparison modal → PDF includes trend graphs
+                        </p>
+                      </button>
                     </div>
 
                     <div className="grid gap-4 lg:grid-cols-2">
                       <ChartPanel
                         title={
-                          comparePerson
-                            ? `Jobs trend · ${comparePerson}`
+                          compareScopeLabel
+                            ? `Jobs trend · ${compareScopeLabel}`
                             : 'Jobs trend · A vs B'
                         }
                         hint="Aligned by day offset — click a bar for that day"
                         interactive
                       >
                         <SimpleCompareBars
-                          legendA={comparePerson ? `${comparePerson} · A` : 'Period A'}
-                          legendB={comparePerson ? `${comparePerson} · B` : 'Period B'}
+                          legendA={compareScopeLabel ? `${compareScopeLabel} · A` : 'Period A'}
+                          legendB={compareScopeLabel ? `${compareScopeLabel} · B` : 'Period B'}
                           items={compareJobsTrend}
                           onItemClick={drillComparePoint}
                         />
                       </ChartPanel>
                       <ChartPanel
                         title={
-                          comparePerson
-                            ? `Value trend · ${comparePerson}`
+                          compareScopeLabel
+                            ? `Value trend · ${compareScopeLabel}`
                             : 'Value trend · A vs B'
                         }
                         hint="Amount by aligned day"
                         interactive
                       >
                         <SimpleLineChart
-                          legendA={comparePerson ? `${comparePerson} · A` : 'Period A value'}
-                          legendB={comparePerson ? `${comparePerson} · B` : 'Period B value'}
+                          legendA={
+                            compareScopeLabel
+                              ? `${compareScopeLabel} · A`
+                              : 'Period A value'
+                          }
+                          legendB={
+                            compareScopeLabel
+                              ? `${compareScopeLabel} · B`
+                              : 'Period B value'
+                          }
                           points={compareAmountTrend}
                           onPointClick={(p) => drillComparePoint(p, 'a')}
                         />
