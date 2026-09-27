@@ -627,9 +627,13 @@ export function ProductionDashboard() {
     (queryRows: ProductionDrillEntry[], asOfDate: string, queryLabel: string): ProductionTotalsContext => {
       const query = sumProductionAmount(queryRows);
       const mtdRange = monthToDateRange(asOfDate);
-      const pool = [...compareEntries, ...monthEntries, ...periodEntries];
+      // Deduplicate — compare/month/period pools often overlap the same jobs
+      const byId = new Map<number, ProductionDrillEntry>();
+      for (const row of [...compareEntries, ...monthEntries, ...periodEntries]) {
+        if (row?.id != null) byId.set(row.id, row);
+      }
       const mtdRows = filterCompareRows(
-        entriesInDateRange(pool, mtdRange.fromDate, mtdRange.toDate),
+        entriesInDateRange([...byId.values()], mtdRange.fromDate, mtdRange.toDate),
       );
       const month = sumProductionAmount(mtdRows);
       const scopeSuffix = compareScopeLabel ? ` · ${compareScopeLabel}` : '';
