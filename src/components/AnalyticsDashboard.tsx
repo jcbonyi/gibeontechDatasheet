@@ -13,24 +13,29 @@ import {
   FileText,
   RefreshCw,
   Search,
+  UserPlus,
   UserRoundX,
   Users,
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
-import { canViewAllDatasheets } from '@/lib/permissions';
+import { canAssignDatasheet, canOverrideAnyStatus, canViewAllDatasheets } from '@/lib/permissions';
 import {
   AT_RISK_FROM_DAY,
   SLA_DAYS,
   type AnalyticsSummary,
   type QueuePriority,
 } from '@/lib/tracking';
-import { STATUS_LABELS } from '@/lib/status';
+import { DATASHEET_STATUSES, isOpenStatus, STATUS_LABELS } from '@/lib/status';
+import { CANCEL_REASONS } from '@/lib/opsConfig';
+import type { DatasheetStatus } from '@/types/datasheet';
 import { SimpleBarChart, SimpleHorizontalBars, SimpleLineChart } from '@/components/SimpleCharts';
 import { StatusBadge } from '@/components/StatusBadge';
 
 interface AssessorOption {
   id: number;
   name: string;
+  role?: string;
+  roleLabel?: string;
 }
 
 type QueueFilter =
@@ -83,6 +88,11 @@ export function AnalyticsDashboard() {
   const [assessorId, setAssessorId] = useState('');
   const [assessors, setAssessors] = useState<AssessorOption[]>([]);
   const [queueFilter, setQueueFilter] = useState<QueueFilter>('attention');
+  const [inlineAssign, setInlineAssign] = useState<Record<number, string>>({});
+  const [actionMessage, setActionMessage] = useState('');
+  const canAssign = user ? canAssignDatasheet(user) : false;
+  const canOverrideStatus = user ? canOverrideAnyStatus(user) : false;
+  const isAdmin = user?.role === 'Admin';
 
   const queryString = useCallback(() => {
     const params = new URLSearchParams();
@@ -227,6 +237,86 @@ export function AnalyticsDashboard() {
       .filter((a) => a.name !== 'Unassigned' && (a.overdue > 0 || a.open >= 5))
       .slice(0, 6);
   }, [summary]);
+
+  const assigneeOptionLabel = (a: AssessorOption) =>
+    `${a.name}${a.roleLabel ? ` · ${a.roleLabel}` : ''}`;
+
+  const canAllocateRow = (status: DatasheetStatus) =>
+    canAssign && (isAdmin || isOpenStatus(status));
+
+  const changeStatus = async (id: number, fromStatus: DatasheetStatus, targetStatus: DatasheetStatus) => {
+    if (!id || fromStatus === targetStatus) return;
+    let reason = '';
+    let cancelReason = '';
+
+    if (targetStatus === 'queried') {
+      const input = window.prompt(
+        `Why is "${STATUS_LABELS[fromStatus]}" being queried? (minimum 3 characters)`,
+      );
+      if (input === null) return;
+      if (input.trim().length < 3) {
+        alert('A query reason of at least 3 characters is required.');
+        return;
+      }
+      reason = input.trim();
+    }
+
+    if (targetStatus === 'cancelled') {
+      const optionsList = CANCEL_REASONS.map((r) => `${r.value} — ${r.label}`).join('\n');
+      const codeInput = window.prompt(
+        `Select a cancellation reason. Type one of the following codes exactly:\n\n${optionsList}`,
+      );
+      if (codeInput === null) return;
+      const code = codeInput.trim();
+      if (!CANCEL_REASONS.some((r) => r.value === code)) {
+        alert('That is not a valid cancellation reason code. Please try again.');
+        return;
+      }
+      cancelReason = code;
+      if (code === 'other') {
+        const notes = window.prompt('Please describe the cancellation reason (minimum 3 characters):');
+        if (notes === null || notes.trim().length < 3) {
+          alert('A description of at least 3 characters is required when selecting "Other".');
+          return;
+        }
+        reason = notes.trim();
+      }
+    }
+
+    const res = await fetch(`/api/datasheets/${id}/review`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status: targetStatus, reason, cancelReason }),
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      alert(data.message || 'Failed to update the task status.');
+      return;
+    }
+    setActionMessage(`Task moved to ${STATUS_LABELS[targetStatus]}`);
+    load();
+  };
+
+  const handleAssign = async (id: number, assignedTo: string) => {
+    if (!assignedTo) return;
+    const res = await fetch(`/api/datasheets/${id}/assign`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ assignedTo: Number(assignedTo) }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      setActionMessage(data.message || 'Assignment failed');
+      return;
+    }
+    setActionMessage('Task allocated');
+    setInlineAssign((prev) => {
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    });
+    load();
+  };
 
   const attentionTotal = decisions?.attentionTotal ?? 0;
   const slaOk = (kpis?.slaCompliancePct ?? 100) >= 90;
@@ -584,71 +674,102 @@ export function AnalyticsDashboard() {
                   <p className="text-[11px] text-slate-500">Switch filter or clear period constraints</p>
                 </div>
               ) : (
-                <div className="max-h-[22rem] overflow-auto rounded-lg border border-slate-100">
-                  <table className="data-table text-xs">
-                    <thead className="sticky top-0 z-10 bg-white shadow-[0_1px_0_0_rgb(226_232_240)]">
-                      <tr>
-                        <th className="!pb-2 !pt-2 !text-[10px]">Priority</th>
-                        <th className="!pb-2 !pt-2 !text-[10px]">Serial</th>
-                        <th className="!pb-2 !pt-2 !text-[10px]">Claim / Reg</th>
-                        <th className="!pb-2 !pt-2 !text-[10px]">Insurer</th>
-                        <th className="!pb-2 !pt-2 !text-[10px]">Status</th>
-                        <th className="!pb-2 !pt-2 !text-[10px]">Age</th>
-                        <th className="!pb-2 !pt-2 !text-[10px]">Owner</th>
-                        <th className="!pb-2 !pt-2" />
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {filteredQueue.map((row) => {
-                        const meta = PRIORITY_META[row.priority];
-                        return (
-                          <tr key={row.id}>
-                            <td className="!py-1.5">
-                              <span
-                                className={`inline-flex rounded-full px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide ring-1 ${meta.className}`}
-                              >
-                                {meta.label}
+                <div className="max-h-[28rem] space-y-2 overflow-auto pr-1">
+                  {actionMessage ? (
+                    <p className="rounded-lg border border-brand-100 bg-brand-50 px-2.5 py-1.5 text-xs font-medium text-brand-800">
+                      {actionMessage}
+                    </p>
+                  ) : null}
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    {filteredQueue.map((row) => {
+                      const meta = PRIORITY_META[row.priority];
+                      const inlineValue = inlineAssign[row.id] || '';
+                      return (
+                        <div
+                          key={row.id}
+                          className={`rounded-xl border bg-white p-2.5 shadow-sm ${
+                            row.is_overdue ? 'border-red-200' : 'border-slate-200'
+                          }`}
+                        >
+                          <div className="flex items-start justify-between gap-2">
+                            <Link
+                              href={`/datasheets/${row.id}`}
+                              className="truncate text-sm font-semibold text-brand-800 hover:text-brand-600"
+                            >
+                              {row.serial_no}
+                            </Link>
+                            <span
+                              className={`inline-flex shrink-0 rounded-full px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide ring-1 ${meta.className}`}
+                            >
+                              {meta.label}
+                            </span>
+                          </div>
+                          <p className="mt-0.5 truncate text-xs text-slate-700">
+                            {row.claim_no || 'No claim no.'} · {row.reg_no || '—'}
+                          </p>
+                          <p className="truncate text-[11px] text-slate-500">{row.client_insurer || 'No insurer'}</p>
+                          <p className="mt-1 text-[11px] font-semibold uppercase tracking-wide text-slate-600">
+                            {row.assigned_to_name || 'Unassigned'}
+                            {row.age_days != null ? (
+                              <span className={row.is_overdue ? 'ml-1 text-red-700' : 'ml-1 text-slate-400'}>
+                                · {row.age_days}d
                               </span>
-                            </td>
-                            <td className="!py-1.5 font-semibold text-brand-800">{row.serial_no}</td>
-                            <td className="!py-1.5">
-                              <div className="truncate text-slate-800">{row.claim_no || '—'}</div>
-                              <div className="truncate text-[10px] text-slate-500">{row.reg_no || '—'}</div>
-                            </td>
-                            <td className="!py-1.5 max-w-[7rem] truncate">{row.client_insurer || '—'}</td>
-                            <td className="!py-1.5">
+                            ) : null}
+                          </p>
+                          {canOverrideStatus ? (
+                            <select
+                              aria-label={`Change status for ${row.serial_no}`}
+                              value={row.status}
+                              className="form-input mt-2 w-full py-1 text-[11px] font-semibold"
+                              onChange={(e) => {
+                                const next = e.target.value as DatasheetStatus;
+                                if (next === row.status) return;
+                                void changeStatus(row.id, row.status, next);
+                              }}
+                            >
+                              {DATASHEET_STATUSES.map((s) => (
+                                <option key={s} value={s}>
+                                  {STATUS_LABELS[s]}
+                                </option>
+                              ))}
+                            </select>
+                          ) : (
+                            <div className="mt-2">
                               <StatusBadge status={row.status} />
-                            </td>
-                            <td className="!py-1.5">
-                              <span
-                                className={
-                                  row.is_overdue
-                                    ? 'font-semibold text-red-700'
-                                    : row.priority === 'at_risk'
-                                      ? 'font-semibold text-amber-700'
-                                      : 'text-slate-700'
+                            </div>
+                          )}
+                          {canAllocateRow(row.status) ? (
+                            <div className="mt-2 flex items-center gap-1">
+                              <select
+                                value={inlineValue}
+                                onChange={(e) =>
+                                  setInlineAssign((prev) => ({ ...prev, [row.id]: e.target.value }))
                                 }
+                                className="form-input py-1 text-[11px]"
+                                aria-label={`Allocate ${row.serial_no}`}
                               >
-                                {row.age_days != null ? `${row.age_days}d` : '—'}
-                              </span>
-                            </td>
-                            <td className="!py-1.5 max-w-[6rem] truncate">
-                              {row.assigned_to_name || <span className="text-slate-400">Unassigned</span>}
-                            </td>
-                            <td className="!py-1.5">
-                              <Link
-                                href={`/datasheets/${row.id}`}
-                                className="inline-flex items-center gap-0.5 text-[11px] font-medium text-brand-600 hover:text-brand-800"
+                                <option value="">Allocate to…</option>
+                                {assessors.map((a) => (
+                                  <option key={a.id} value={a.id}>
+                                    {assigneeOptionLabel(a)}
+                                  </option>
+                                ))}
+                              </select>
+                              <button
+                                type="button"
+                                onClick={() => handleAssign(row.id, inlineValue)}
+                                disabled={!inlineValue}
+                                className="inline-flex items-center gap-1 rounded-lg bg-accent-600 px-2 py-1 text-[11px] font-semibold text-white disabled:cursor-not-allowed disabled:opacity-40"
                               >
-                                Decide
-                                <ArrowRight className="h-3 w-3" />
-                              </Link>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
+                                <UserPlus className="h-3 w-3" />
+                                Go
+                              </button>
+                            </div>
+                          ) : null}
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
               )}
             </div>

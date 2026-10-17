@@ -136,18 +136,28 @@ async function initSupabase(): Promise<void> {
   const client = getSupabaseAdmin();
   if (!client) return;
 
-  const { error } = await client.from('users').select('id', { count: 'exact', head: true });
+  const { error, status, statusText } = await client
+    .from('users')
+    .select('id', { count: 'exact', head: true });
   if (error) {
+    const detail = [error.message, error.code, error.details, error.hint].filter(Boolean).join(' — ');
     if (
       error.code === 'PGRST205' ||
-      error.message.includes('Could not find the table') ||
-      error.message.includes('schema cache')
+      (error.message || '').includes('Could not find the table') ||
+      (error.message || '').includes('schema cache')
     ) {
       throw new Error(
         'Supabase tables not found. Run supabase/migrations/001_initial.sql in the Supabase SQL Editor.',
       );
     }
-    throw new Error(`Supabase connection failed: ${error.message}`);
+    if (status === 402) {
+      throw new Error(
+        'The Supabase project is paused or restricted (HTTP 402). Open the Supabase dashboard, restore the project, then sign in again.',
+      );
+    }
+    throw new Error(
+      `Supabase connection failed: HTTP ${status} ${statusText || ''} ${detail || JSON.stringify(error)}`.trim(),
+    );
   }
 
   useSupabase = true;
@@ -169,14 +179,45 @@ function dbConfigError(): string {
   return 'Database not configured. Set NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY, or provide DATABASE_URL.';
 }
 
+function isIpv6OnlySupabaseHost(connectionString: string): boolean {
+  try {
+    return /^db\.[^.]+\.supabase\.co$/i.test(new URL(connectionString).hostname);
+  } catch {
+    return /@db\.[^.]+\.supabase\.co[:/]/i.test(connectionString);
+  }
+}
+
+function directHostUnreachableMessage(connectionString: string, restError?: unknown): string {
+  let host = 'db.<project>.supabase.co';
+  try {
+    host = new URL(connectionString).hostname;
+  } catch {
+    /* keep fallback */
+  }
+  const restBit =
+    restError instanceof Error
+      ? ` The Supabase API also failed: ${restError.message}`
+      : ' The app can use the Supabase API (IPv4) instead when NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are valid.';
+  return (
+    `Cannot reach ${host}. That direct database host is IPv6-only, and this network has no IPv6 route ` +
+    `(getaddrinfo ENOTFOUND / ENETUNREACH). In Supabase open Connect, copy the Session pooler or Transaction pooler ` +
+    `connection string (host aws-…pooler.supabase.com, username postgres.<project-ref>), and set it as DATABASE_URL.${restBit}`
+  );
+}
+
 async function initPostgres(): Promise<void> {
   const useLocal = process.env.USE_LOCAL_DB === 'true';
+  let restError: unknown;
 
   if (!useLocal) {
     try {
       await initSupabase();
       if (useSupabase) return;
     } catch (err) {
+      restError = err;
+      if (err instanceof Error && /paused or restricted \(HTTP 402\)/.test(err.message)) {
+        throw err;
+      }
       if (!process.env.DATABASE_URL?.trim()) {
         throw err;
       }
@@ -202,6 +243,28 @@ async function initPostgres(): Promise<void> {
     connectionString: url,
     ssl: requiresSsl(url) ? { rejectUnauthorized: false } : undefined,
   });
+
+  try {
+    await pool.query('SELECT 1');
+  } catch (err) {
+    const code = (err as NodeJS.ErrnoException).code || '';
+    const msg = err instanceof Error ? err.message : '';
+    if (
+      isIpv6OnlySupabaseHost(url) &&
+      (code === 'ENOTFOUND' || code === 'ENETUNREACH' || /ENOTFOUND|ENETUNREACH/i.test(msg))
+    ) {
+      await pool.end().catch(() => undefined);
+      pool = null;
+      const restText = restError instanceof Error ? restError.message : '';
+      if (/HTTP 402\b/.test(restText)) {
+        throw new Error(
+          'The Supabase project is paused or restricted (HTTP 402). Open the Supabase dashboard, restore the project, then sign in again.',
+        );
+      }
+      throw new Error(directHostUnreachableMessage(url, restError));
+    }
+    throw err;
+  }
 
   await pool.query(`
     CREATE TABLE IF NOT EXISTS users (
