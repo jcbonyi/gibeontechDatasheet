@@ -26,16 +26,23 @@ const ROLE_RANK: Record<UserRole, number> = {
   Assessor: 1,
 };
 
-/** Name allowlist for any-status override (in addition to Admin role). */
+/** Name allowlist for any-status override (in addition to staff roles). */
 const STATUS_OVERRIDE_NAMES = ['caro', 'lucy', 'moses njiraini', 'admin'] as const;
 
 /**
- * Caro, Lucy, Moses Njiraini, named Admin, and all Admin-role users
- * may set any status on any task (including Approved / Report Issued).
+ * Staff on the assessment task board may set any status on a task,
+ * including Approved / Report Issued. Named users keep the same access.
  */
 export function canOverrideAnyStatus(user: AuthUser | null | undefined): boolean {
   if (!user) return false;
-  if (user.role === 'Admin') return true;
+  if (
+    user.role === 'Admin' ||
+    user.role === 'PrincipalOfficer' ||
+    user.role === 'OperationsManager' ||
+    user.role === 'Assessor'
+  ) {
+    return true;
+  }
   if (!user.name) return false;
   const n = user.name.trim().toLowerCase();
   return STATUS_OVERRIDE_NAMES.some((k) => n === k || n.startsWith(`${k} `));
@@ -88,7 +95,12 @@ export function canDeleteDatasheet(user: AuthUser): boolean {
 }
 
 export function canAssignDatasheet(user: AuthUser): boolean {
-  return user.role === 'Admin' || user.role === 'PrincipalOfficer' || user.role === 'OperationsManager';
+  return (
+    user.role === 'Admin' ||
+    user.role === 'PrincipalOfficer' ||
+    user.role === 'OperationsManager' ||
+    user.role === 'Assessor'
+  );
 }
 
 /**
