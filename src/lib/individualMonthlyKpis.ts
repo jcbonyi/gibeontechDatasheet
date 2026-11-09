@@ -17,7 +17,13 @@ export type IndividualMonthlyKpiTarget = {
 export const INDIVIDUAL_MONTHLY_KPI_TARGETS: IndividualMonthlyKpiTarget[] = [
   { key: 'kelvin', label: 'Kelvin', targetSeen: null, targetAmount: 350_000 },
   { key: 'mjomba', label: 'Mjomba', targetSeen: null, targetAmount: 350_000 },
-  { key: 'sam', label: 'Sam', aliases: ['samuel'], targetSeen: null, targetAmount: 330_000 },
+  {
+    key: 'sam',
+    label: 'Sam',
+    aliases: ['samuel', 'samson', 'omondi', 'samson omondi'],
+    targetSeen: null,
+    targetAmount: 330_000,
+  },
   { key: 'rahab', label: 'Rahab', targetSeen: null, targetAmount: 300_000 },
   { key: 'mungai', label: 'Mungai', targetSeen: null, targetAmount: 450_000 },
   { key: 'victor', label: 'Victor', targetSeen: 52, targetAmount: 190_000 },
