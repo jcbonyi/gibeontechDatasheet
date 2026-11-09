@@ -30,6 +30,10 @@ import { CANCEL_REASONS } from '@/lib/opsConfig';
 import type { DatasheetStatus } from '@/types/datasheet';
 import { SimpleBarChart, SimpleHorizontalBars, SimpleLineChart } from '@/components/SimpleCharts';
 import { StatusBadge } from '@/components/StatusBadge';
+import {
+  IndividualMonthlyKpiPanel,
+  type PersonalKpiPayload,
+} from '@/components/IndividualMonthlyKpiPanel';
 
 interface AssessorOption {
   id: number;
@@ -90,6 +94,7 @@ export function AnalyticsDashboard() {
   const [queueFilter, setQueueFilter] = useState<QueueFilter>('attention');
   const [inlineAssign, setInlineAssign] = useState<Record<number, string>>({});
   const [actionMessage, setActionMessage] = useState('');
+  const [personalKpi, setPersonalKpi] = useState<PersonalKpiPayload | null>(null);
   const canAssign = user ? canAssignDatasheet(user) : false;
   const canOverrideStatus = user ? canOverrideAnyStatus(user) : false;
   const isAdmin = user?.role === 'Admin';
@@ -106,9 +111,14 @@ export function AnalyticsDashboard() {
     setLoading(true);
     try {
       const qs = queryString();
-      const res = await fetch(`/api/analytics${qs ? `?${qs}` : ''}`);
-      const data = await res.json();
+      const [analyticsRes, kpiRes] = await Promise.all([
+        fetch(`/api/analytics${qs ? `?${qs}` : ''}`),
+        fetch('/api/analytics/personal-kpi'),
+      ]);
+      const data = await analyticsRes.json();
       setSummary(data.summary || null);
+      const kpiData = await kpiRes.json().catch(() => null);
+      setPersonalKpi(kpiRes.ok && kpiData ? kpiData : null);
     } finally {
       setLoading(false);
     }
@@ -414,6 +424,10 @@ export function AnalyticsDashboard() {
           </button>
         </div>
       </div>
+
+      {personalKpi && (personalKpi.me || (personalKpi.team && personalKpi.team.length > 0)) ? (
+        <IndividualMonthlyKpiPanel data={personalKpi} />
+      ) : null}
 
       {loading || !summary ? (
         <div className="section-card flex items-center gap-2 text-sm text-slate-500">
