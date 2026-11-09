@@ -26,8 +26,9 @@ export async function GET(req: NextRequest) {
       ? computeIndividualMonthlyKpi(myTarget, entries, { userId: user.id })
       : null;
 
-    const viewTeam = canViewAllDatasheets(user.role) && user.role !== 'Assessor';
-    const team = viewTeam ? computeAllIndividualMonthlyKpis(entries) : undefined;
+    const team = canViewAllDatasheets(user.role)
+      ? computeAllIndividualMonthlyKpis(entries)
+      : undefined;
 
     return NextResponse.json({
       monthLabel: month.label,

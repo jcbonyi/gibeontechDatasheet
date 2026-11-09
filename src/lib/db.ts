@@ -890,9 +890,8 @@ function filterDatasheetRows(rows: DbDatasheet[], filters: DatasheetListFilters)
   }
 
   if (!filters.viewAll && filters.scopeUserId) {
-    result = result.filter(
-      (r) => r.created_by === filters.scopeUserId || r.assigned_to === filters.scopeUserId,
-    );
+    // Assessors see only tasks allocated to them
+    result = result.filter((r) => r.assigned_to === filters.scopeUserId);
   }
   if (filters.status) result = result.filter((r) => r.status === filters.status);
   if (filters.claimNo) {
@@ -967,9 +966,7 @@ export async function listDatasheets(filters: DatasheetListFilters): Promise<DbD
     if (filters.unallocated) q = q.is('assigned_to', null);
     if (filters.q) q = q.ilike('search_text', `%${filters.q}%`);
     if (!filters.viewAll && filters.scopeUserId) {
-      q = q.or(
-        `created_by.eq.${filters.scopeUserId},assigned_to.eq.${filters.scopeUserId}`,
-      );
+      q = q.eq('assigned_to', filters.scopeUserId);
     } else if (filters.assessorId) {
       q = q.or(
         `created_by.eq.${filters.assessorId},assigned_to.eq.${filters.assessorId}`,
@@ -1022,7 +1019,7 @@ export async function listDatasheets(filters: DatasheetListFilters): Promise<DbD
   }
   if (!filters.viewAll && filters.scopeUserId) {
     params.push(filters.scopeUserId);
-    conditions.push(`(d.created_by = $${params.length} OR d.assigned_to = $${params.length})`);
+    conditions.push(`d.assigned_to = $${params.length}`);
   } else if (filters.assessorId) {
     params.push(filters.assessorId);
     conditions.push(`(d.created_by = $${params.length} OR d.assigned_to = $${params.length})`);

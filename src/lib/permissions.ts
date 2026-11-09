@@ -62,13 +62,17 @@ export function isSuperUser(role: UserRole): boolean {
   return role === 'Admin';
 }
 
-/** All authenticated roles can view the full datasheet register. */
-export function canViewAllDatasheets(_role: UserRole): boolean {
-  return true;
+/** Management roles see the full register; Assessors only see their own assigned work. */
+export function canViewAllDatasheets(role: UserRole): boolean {
+  return role === 'Admin' || role === 'PrincipalOfficer' || role === 'OperationsManager';
 }
 
-export function canViewDatasheet(_user: AuthUser, _ds: DatasheetRecord): boolean {
-  return true;
+export function canViewDatasheet(user: AuthUser, ds: DatasheetRecord): boolean {
+  if (canViewAllDatasheets(user.role)) return true;
+  if (user.role === 'Assessor') {
+    return ds.assigned_to === user.id;
+  }
+  return false;
 }
 
 export function canEditDatasheet(user: AuthUser, ds: DatasheetRecord): boolean {
