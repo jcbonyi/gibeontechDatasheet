@@ -9,6 +9,7 @@ import {
 } from '@/lib/individualMonthlyKpis';
 import { downloadIndividualKpiPdf } from '@/utils/individualKpiPdf';
 import { formatDisplayDate } from '@/lib/productionConfig';
+import { STATUS_LABELS, normalizeStatus } from '@/lib/status';
 
 function barTone(pct: number | null, met: boolean | null): string {
   if (met) return 'bg-emerald-500';
@@ -487,6 +488,118 @@ export function IndividualMonthlyKpiPanel({
               ) : (
                 <p className="py-6 text-center text-sm text-slate-500">No KPI data for this selection.</p>
               )}
+
+              {modalPeople.map((p) => (
+                <div key={`detail-${p.key}`} className="space-y-3 rounded-xl border border-slate-100 p-3">
+                  <p className="text-sm font-bold text-slate-900">{p.label} — line details</p>
+
+                  {(p.seenLines?.length ?? 0) > 0 ? (
+                    <div>
+                      <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-teal-800">
+                        Seen By ({p.seenLines.length})
+                      </p>
+                      <div className="max-h-48 overflow-auto rounded-lg border border-slate-100">
+                        <table className="data-table text-[11px]">
+                          <thead>
+                            <tr>
+                              <th>Date</th>
+                              <th>Reg.</th>
+                              <th>Insurer</th>
+                              <th>Assignment</th>
+                              <th>Value</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {p.seenLines.map((l, i) => (
+                              <tr key={`seen-${p.key}-${i}`}>
+                                <td>{l.date ? formatDisplayDate(l.date) : '—'}</td>
+                                <td className="font-semibold">{l.registration}</td>
+                                <td>{l.insurer}</td>
+                                <td>{l.assignment}</td>
+                                <td>{formatKpiAmount(l.amount)}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  ) : null}
+
+                  {(p.doneLines?.length ?? 0) > 0 ? (
+                    <div>
+                      <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-brand-800">
+                        Done By ({p.doneLines.length})
+                      </p>
+                      <div className="max-h-48 overflow-auto rounded-lg border border-slate-100">
+                        <table className="data-table text-[11px]">
+                          <thead>
+                            <tr>
+                              <th>Date</th>
+                              <th>Reg.</th>
+                              <th>Insurer</th>
+                              <th>Insured</th>
+                              <th>Assignment</th>
+                              <th>Value</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {p.doneLines.map((l, i) => (
+                              <tr key={`done-${p.key}-${i}`}>
+                                <td>{l.date ? formatDisplayDate(l.date) : '—'}</td>
+                                <td className="font-semibold">{l.registration}</td>
+                                <td>{l.insurer}</td>
+                                <td>{l.insured}</td>
+                                <td>{l.assignment}</td>
+                                <td>{formatKpiAmount(l.amount)}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  ) : null}
+
+                  {(p.pendingLines?.length ?? 0) > 0 ? (
+                    <div>
+                      <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-amber-800">
+                        Pending now ({p.pendingLines.length})
+                      </p>
+                      <div className="max-h-48 overflow-auto rounded-lg border border-slate-100">
+                        <table className="data-table text-[11px]">
+                          <thead>
+                            <tr>
+                              <th>Serial</th>
+                              <th>Reg.</th>
+                              <th>Claim</th>
+                              <th>Insurer</th>
+                              <th>Garage / Repairer</th>
+                              <th>Status</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {p.pendingLines.map((l, i) => (
+                              <tr key={`pending-${p.key}-${i}`}>
+                                <td className="font-semibold text-brand-800">{l.serial}</td>
+                                <td>{l.registration}</td>
+                                <td>{l.claim}</td>
+                                <td>{l.insurer}</td>
+                                <td>{l.garage}</td>
+                                <td>
+                                  {STATUS_LABELS[normalizeStatus(l.status)] || l.status}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  ) : null}
+
+                  {!p.seenLines?.length && !p.doneLines?.length && !p.pendingLines?.length ? (
+                    <p className="text-xs text-slate-500">No line items for this person in the selected period.</p>
+                  ) : null}
+                </div>
+              ))}
             </div>
           </div>
         </div>

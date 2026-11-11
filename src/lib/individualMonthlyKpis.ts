@@ -36,6 +36,11 @@ export const INDIVIDUAL_MONTHLY_KPI_TARGETS: IndividualMonthlyKpiTarget[] = [
 export type ProductionKpiRow = {
   status?: string | null;
   amount?: number | null;
+  production_date?: string | null;
+  registration_number?: string | null;
+  insurer_name?: string | null;
+  insured?: string | null;
+  assignment?: string | null;
   done_by_name?: string | null;
   seen_by_name?: string | null;
   done_by_user_id?: number | null;
@@ -46,6 +51,32 @@ export type PendingJobRow = {
   status?: string | null;
   assigned_to?: number | null;
   assigned_to_name?: string | null;
+  serial_no?: string | null;
+  reg_no?: string | null;
+  claim_no?: string | null;
+  client_insurer?: string | null;
+  /** Garage / repairer from datasheet sign-off. */
+  repairer?: string | null;
+};
+
+/** Production line attributed to Seen By or Done By. */
+export type KpiProductionLine = {
+  date: string;
+  registration: string;
+  insurer: string;
+  insured: string;
+  assignment: string;
+  amount: number;
+};
+
+/** Open assigned Assessment task (pending). */
+export type KpiPendingLine = {
+  serial: string;
+  registration: string;
+  claim: string;
+  insurer: string;
+  garage: string;
+  status: string;
 };
 
 export type IndividualMonthlyKpiResult = {
@@ -60,6 +91,9 @@ export type IndividualMonthlyKpiResult = {
   amountPct: number | null;
   seenMet: boolean | null;
   amountMet: boolean;
+  seenLines: KpiProductionLine[];
+  doneLines: KpiProductionLine[];
+  pendingLines: KpiPendingLine[];
 };
 
 export type TeamOverallKpi = {
@@ -112,21 +146,36 @@ function pctOf(actual: number, target: number): number {
   return Math.round((actual / target) * 1000) / 10;
 }
 
-function countPendingForTarget(
+function toProductionLine(r: ProductionKpiRow): KpiProductionLine {
+  return {
+    date: String(r.production_date || '').slice(0, 10),
+    registration: String(r.registration_number || '').trim() || '—',
+    insurer: String(r.insurer_name || '').trim() || '—',
+    insured: String(r.insured || '').trim() || '—',
+    assignment: String(r.assignment || '').trim() || '—',
+    amount: Math.round((Number(r.amount) || 0) * 100) / 100,
+  };
+}
+
+function toPendingLine(r: PendingJobRow): KpiPendingLine {
+  return {
+    serial: String(r.serial_no || '').trim() || '—',
+    registration: String(r.reg_no || '').trim() || '—',
+    claim: String(r.claim_no || '').trim() || '—',
+    insurer: String(r.client_insurer || '').trim() || '—',
+    garage: String(r.repairer || '').trim() || '—',
+    status: String(r.status || '').trim() || '—',
+  };
+}
+
+function pendingMatches(
   target: IndividualMonthlyKpiTarget,
-  pendingRows: PendingJobRow[],
+  r: PendingJobRow,
   userId?: number | null,
-): number {
-  let n = 0;
-  for (const r of pendingRows) {
-    if (!isOpenStatus(String(r.status || ''))) continue;
-    if (userId != null && r.assigned_to === userId) {
-      n += 1;
-      continue;
-    }
-    if (nameMatchesKpiPerson(r.assigned_to_name, target)) n += 1;
-  }
-  return n;
+): boolean {
+  if (!isOpenStatus(String(r.status || ''))) return false;
+  if (userId != null && r.assigned_to === userId) return true;
+  return nameMatchesKpiPerson(r.assigned_to_name, target);
 }
 
 export function computeIndividualMonthlyKpi(
@@ -135,7 +184,8 @@ export function computeIndividualMonthlyKpi(
   opts?: { userId?: number | null; pendingRows?: PendingJobRow[] },
 ): IndividualMonthlyKpiResult {
   const userId = opts?.userId ?? null;
-  let seenJobs = 0;
+  const seenLines: KpiProductionLine[] = [];
+  const doneLines: KpiProductionLine[] = [];
   let doneAmount = 0;
 
   for (const r of rows) {
@@ -145,18 +195,31 @@ export function computeIndividualMonthlyKpi(
     const seenMatch =
       (userId != null && r.seen_by_user_id === userId) ||
       nameMatchesKpiPerson(r.seen_by_name, target);
-    if (seenMatch) seenJobs += 1;
+    if (seenMatch) seenLines.push(toProductionLine(r));
 
     const doneMatch =
       (userId != null && r.done_by_user_id === userId) ||
       nameMatchesKpiPerson(r.done_by_name, target);
-    if (doneMatch) doneAmount += amount;
+    if (doneMatch) {
+      doneLines.push(toProductionLine(r));
+      doneAmount += amount;
+    }
   }
 
+  const pendingLines = (opts?.pendingRows || [])
+    .filter((r) => pendingMatches(target, r, userId))
+    .map(toPendingLine);
+
   doneAmount = Math.round(doneAmount * 100) / 100;
-  const pendingJobs = countPendingForTarget(target, opts?.pendingRows || [], userId);
+  const seenJobs = seenLines.length;
+  const pendingJobs = pendingLines.length;
   const seenPct = target.targetSeen != null ? pctOf(seenJobs, target.targetSeen) : null;
   const amountPct = pctOf(doneAmount, target.targetAmount);
+
+  const byDateThenReg = (a: KpiProductionLine, b: KpiProductionLine) =>
+    b.date.localeCompare(a.date) || a.registration.localeCompare(b.registration);
+  seenLines.sort(byDateThenReg);
+  doneLines.sort(byDateThenReg);
 
   return {
     key: target.key,
@@ -170,6 +233,9 @@ export function computeIndividualMonthlyKpi(
     amountPct,
     seenMet: target.targetSeen != null ? seenJobs >= target.targetSeen : null,
     amountMet: doneAmount >= target.targetAmount,
+    seenLines,
+    doneLines,
+    pendingLines,
   };
 }
 
